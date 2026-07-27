@@ -6,12 +6,16 @@ import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLigh
 import { createPhoneModel } from './createPhone';
 import { PhoneAudio } from './PhoneAudio';
 import { PhoneController, type PhoneSnapshot } from './PhoneController';
+import { advanceDialGesture, beginDialGesture, type DialGesture } from './dialPhysics';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene');
 const loading = document.querySelector<HTMLElement>('#loading');
 const errorPanel = document.querySelector<HTMLElement>('#error-panel');
 const statusLabel = document.querySelector<HTMLElement>('#status-label');
 const numberDisplay = document.querySelector<HTMLOutputElement>('#number-display');
+const readoutLabel = document.querySelector<HTMLElement>('.readout-label');
+const mobileGuideStep = document.querySelector<HTMLElement>('#mobile-guide-step');
+const mobileGuideText = document.querySelector<HTMLElement>('#mobile-guide-text');
 const pulseProgress = document.querySelector<HTMLElement>('#pulse-progress');
 const receiverButton = document.querySelector<HTMLButtonElement>('#receiver-button');
 const receiverAction = document.querySelector<HTMLElement>('#receiver-action');
@@ -23,6 +27,9 @@ if (
   !errorPanel ||
   !statusLabel ||
   !numberDisplay ||
+  !readoutLabel ||
+  !mobileGuideStep ||
+  !mobileGuideText ||
   !pulseProgress ||
   !receiverButton ||
   !receiverAction ||
@@ -217,6 +224,175 @@ function createContactNote(renderer: THREE.WebGLRenderer) {
   };
 }
 
+function createSetDecor() {
+  const root = new THREE.Group();
+  root.name = 'art-deco-set-dressing';
+
+  const brass = new THREE.MeshStandardMaterial({
+    color: '#80613d',
+    roughness: 0.64,
+    metalness: 0.62,
+    envMapIntensity: 0.24,
+  });
+  const blackLacquer = new THREE.MeshStandardMaterial({
+    color: '#161817',
+    roughness: 0.48,
+    metalness: 0.14,
+    envMapIntensity: 0.24,
+  });
+  const smokedGlass = new THREE.MeshPhysicalMaterial({
+    color: '#263936',
+    roughness: 0.3,
+    transmission: 0.08,
+    thickness: 0.35,
+    envMapIntensity: 0.22,
+  });
+
+  const clockIvory = new THREE.MeshStandardMaterial({
+    color: '#bbae8d',
+    roughness: 0.88,
+    metalness: 0,
+    envMapIntensity: 0.12,
+  });
+  const clock = new THREE.Group();
+  clock.name = 'art-deco-wall-clock';
+  clock.position.set(3.45, 3.3, -4.44);
+
+  const clockCase = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.02, 1.02, 0.14, 8),
+    blackLacquer,
+  );
+  clockCase.rotation.x = Math.PI / 2;
+  clockCase.castShadow = true;
+  clock.add(clockCase);
+
+  const clockBezel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.83, 0.83, 0.09, 48),
+    brass,
+  );
+  clockBezel.rotation.x = Math.PI / 2;
+  clockBezel.position.z = 0.09;
+  clock.add(clockBezel);
+
+  const clockFace = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.72, 0.72, 0.045, 48),
+    clockIvory,
+  );
+  clockFace.rotation.x = Math.PI / 2;
+  clockFace.position.z = 0.15;
+  clock.add(clockFace);
+
+  for (let hour = 0; hour < 12; hour += 1) {
+    const angle = (hour / 12) * Math.PI * 2;
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(hour % 3 === 0 ? 0.045 : 0.028, hour % 3 === 0 ? 0.16 : 0.1, 0.025),
+      brass,
+    );
+    marker.position.set(Math.sin(angle) * 0.58, Math.cos(angle) * 0.58, 0.19);
+    marker.rotation.z = -angle;
+    clock.add(marker);
+  }
+
+  const hourHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.42, 0.035), blackLacquer);
+  hourHand.position.set(0.12, 0.16, 0.205);
+  hourHand.rotation.z = -0.64;
+  clock.add(hourHand);
+
+  const minuteHand = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.57, 0.035), blackLacquer);
+  minuteHand.position.set(-0.23, 0.15, 0.21);
+  minuteHand.rotation.z = 0.98;
+  clock.add(minuteHand);
+
+  const clockPin = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.045, 18), brass);
+  clockPin.rotation.x = Math.PI / 2;
+  clockPin.position.z = 0.23;
+  clock.add(clockPin);
+
+  const clockCrown = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.12, 0.12), brass);
+  clockCrown.position.set(0, 1.02, 0.02);
+  clock.add(clockCrown);
+  root.add(clock);
+
+  const pen = new THREE.Group();
+  pen.name = 'fountain-pen';
+  pen.position.set(-3.75, 0.105, -1.38);
+  pen.rotation.y = -0.16;
+
+  const penBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.052, 0.061, 1.72, 18),
+    blackLacquer,
+  );
+  penBody.rotation.z = Math.PI / 2;
+  penBody.castShadow = true;
+  pen.add(penBody);
+
+  const penCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.064, 0.064, 0.48, 18),
+    blackLacquer,
+  );
+  penCap.rotation.z = Math.PI / 2;
+  penCap.position.x = -0.92;
+  penCap.castShadow = true;
+  pen.add(penCap);
+
+  const penBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.068, 0.068, 0.055, 18),
+    brass,
+  );
+  penBand.rotation.z = Math.PI / 2;
+  penBand.position.x = -0.67;
+  pen.add(penBand);
+
+  const nib = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.34, 12), brass);
+  nib.rotation.z = -Math.PI / 2;
+  nib.position.x = 1.02;
+  nib.castShadow = true;
+  pen.add(nib);
+  root.add(pen);
+
+  const inkwell = new THREE.Group();
+  inkwell.name = 'inkwell';
+  inkwell.position.set(-4.35, 0, -0.83);
+  const bottle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.29, 0.39, 0.34, 8),
+    smokedGlass,
+  );
+  bottle.position.y = 0.17;
+  bottle.castShadow = true;
+  bottle.receiveShadow = true;
+  inkwell.add(bottle);
+
+  const wellShoulder = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.25, 0.12, 8),
+    brass,
+  );
+  wellShoulder.position.y = 0.4;
+  wellShoulder.castShadow = true;
+  inkwell.add(wellShoulder);
+
+  const wellCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.16, 0.12, 12),
+    blackLacquer,
+  );
+  wellCap.position.y = 0.52;
+  wellCap.castShadow = true;
+  inkwell.add(wellCap);
+  root.add(inkwell);
+
+  return {
+    root,
+    dispose: () => {
+      root.traverse((object) => {
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+      });
+      brass.dispose();
+      blackLacquer.dispose();
+      smokedGlass.dispose();
+      clockIvory.dispose();
+    },
+  };
+}
+
 try {
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -284,6 +460,11 @@ try {
 
   const contactNote = createContactNote(renderer);
   scene.add(contactNote.mesh);
+  const contactNoteDesktopPosition = contactNote.mesh.position.clone();
+  const contactNoteDesktopQuaternion = contactNote.mesh.quaternion.clone();
+
+  const setDecor = createSetDecor();
+  scene.add(setDecor.root);
 
   const plasterTexture = createPlasterTexture();
   const wallMaterial = new THREE.MeshStandardMaterial({
@@ -302,7 +483,9 @@ try {
   scene.add(phone.root);
 
   const audio = new PhoneAudio();
+  document.body.dataset.audioRoute = audio.route;
   const controller = new PhoneController(phone, audio);
+  const dialReference = phone.dialPivot.parent ?? phone.root;
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0.2, 0.85, 0);
   controls.enableDamping = true;
@@ -314,13 +497,105 @@ try {
   controls.minAzimuthAngle = THREE.MathUtils.degToRad(-58);
   controls.maxAzimuthAngle = THREE.MathUtils.degToRad(58);
 
+  const desktopCameraPosition = new THREE.Vector3(8.6, 7.25, 10.9);
+  const desktopTarget = new THREE.Vector3(0.2, 0.85, 0);
+  const cameraDirection = desktopCameraPosition.clone().sub(desktopTarget).normalize();
+
+  const isCompactViewport = () => (
+    window.innerWidth <= 850
+    || (window.innerWidth <= 980 && window.innerHeight <= 600)
+  );
+
+  const applyResponsiveSceneLayout = () => {
+    const compact = isCompactViewport();
+    const portrait = compact && window.innerHeight > window.innerWidth;
+
+    if (portrait) {
+      const target = new THREE.Vector3(0.22, 1.28, 0.28);
+      const aspect = Math.max(window.innerWidth / window.innerHeight, 0.38);
+      camera.fov = 44;
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+      const distance = THREE.MathUtils.clamp(
+        5.6 / (2 * Math.tan(horizontalFov / 2) * 0.9),
+        15.5,
+        19,
+      );
+      controls.target.copy(target);
+      camera.position.copy(target).addScaledVector(cameraDirection, distance);
+      controls.minDistance = distance * 0.84;
+      controls.maxDistance = distance * 1.16;
+      contactNote.mesh.position.set(1.72, 0.04, 1.18);
+      contactNote.mesh.rotation.set(0, -0.08, 0);
+      contactNote.mesh.scale.setScalar(0.58);
+    } else if (compact) {
+      camera.fov = 34;
+      controls.target.set(0.2, 0, 0.15);
+      camera.position.copy(controls.target).addScaledVector(cameraDirection, 11.8);
+      controls.minDistance = 9.8;
+      controls.maxDistance = 15.5;
+      contactNote.mesh.position.copy(contactNoteDesktopPosition);
+      contactNote.mesh.quaternion.copy(contactNoteDesktopQuaternion);
+      contactNote.mesh.scale.setScalar(1);
+    } else {
+      camera.fov = 34;
+      controls.target.copy(desktopTarget);
+      camera.position.copy(desktopCameraPosition);
+      controls.minDistance = 9.4;
+      controls.maxDistance = 17;
+      contactNote.mesh.position.copy(contactNoteDesktopPosition);
+      contactNote.mesh.quaternion.copy(contactNoteDesktopQuaternion);
+      contactNote.mesh.scale.setScalar(1);
+    }
+
+    controls.enablePan = !compact;
+    controls.rotateSpeed = compact ? 0.48 : 1;
+    controls.zoomSpeed = compact ? 0.72 : 1;
+    contactNote.mesh.visible = true;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.65 : 2));
+    controls.update();
+  };
+
+  applyResponsiveSceneLayout();
+
   const updateUi = (snapshot: PhoneSnapshot) => {
     document.body.dataset.phoneState = snapshot.state;
     statusLabel.textContent = snapshot.state === 'on-hook'
       ? 'Receiver cradled'
       : snapshot.state === 'dialing'
-        ? 'Dial turning'
+        ? snapshot.dialPhase === 'held'
+          ? snapshot.dialAtStop
+            ? `${snapshot.dialDigit} at stop — release`
+            : `Turn ${snapshot.dialDigit} clockwise`
+          : snapshot.dialPhase === 'returning'
+            ? `${snapshot.dialDigit} returning`
+            : 'Dial turning'
         : 'Line ready';
+    readoutLabel.textContent = snapshot.state === 'dialing'
+      ? snapshot.dialPhase === 'held'
+        ? snapshot.dialAtStop
+          ? `Release ${snapshot.dialDigit} to register`
+          : `Turn ${snapshot.dialDigit} to the metal stop`
+        : `Registering ${snapshot.dialDigit}`
+      : 'Number registered';
+    if (snapshot.state === 'on-hook') {
+      mobileGuideStep.textContent = '01';
+      mobileGuideText.textContent = 'Lift the receiver to begin';
+    } else if (snapshot.state === 'off-hook') {
+      mobileGuideStep.textContent = '02';
+      mobileGuideText.textContent = 'Choose a number and turn clockwise';
+    } else if (snapshot.dialPhase === 'held' && snapshot.dialAtStop) {
+      mobileGuideStep.textContent = '03';
+      mobileGuideText.textContent = `Release ${snapshot.dialDigit} to register`;
+    } else if (snapshot.dialPhase === 'held') {
+      mobileGuideStep.textContent = '02';
+      mobileGuideText.textContent = `Turn ${snapshot.dialDigit} to the metal stop`;
+    } else {
+      mobileGuideStep.textContent = '03';
+      mobileGuideText.textContent = `Let ${snapshot.dialDigit} return`;
+    }
     receiverAction.textContent = snapshot.state === 'on-hook' ? 'Lift receiver' : 'Hang up';
     numberDisplay.value = snapshot.digits || '—';
     numberDisplay.textContent = snapshot.digits || '—';
@@ -333,9 +608,17 @@ try {
   };
   controller.subscribe(updateUi);
 
-  receiverButton.addEventListener('click', () => {
-    void audio.unlock();
+  receiverButton.addEventListener('click', async () => {
+    const audioReady = audio.unlock();
     controller.toggleReceiver();
+    const context = await audioReady;
+    document.body.dataset.audioState = context?.state ?? 'disabled';
+    if (controller.snapshot().state !== 'on-hook') {
+      await audio.startDialTone();
+      document.body.dataset.lineAudio = audio.lineActive ? 'active' : 'blocked';
+    } else {
+      document.body.dataset.lineAudio = 'stopped';
+    }
   });
   clearButton.addEventListener('click', () => controller.clearDigits());
 
@@ -345,10 +628,10 @@ try {
   const planeNormal = new THREE.Vector3();
   const hitPoint = new THREE.Vector3();
   const localHitPoint = new THREE.Vector3();
-  const dialCenter = new THREE.Vector2();
+  const dialWorldQuaternion = new THREE.Quaternion();
   let activePointer: number | null = null;
   let interaction: 'receiver' | 'dial' | null = null;
-  let dialStartPointerAngle = 0;
+  let dialGesture: DialGesture | null = null;
 
   const setPointer = (event: PointerEvent) => {
     pointer.set(
@@ -369,17 +652,48 @@ try {
 
   const onPointerDown = (event: PointerEvent) => {
     if (activePointer !== null || event.button !== 0) return;
-    void audio.unlock();
+    void audio.unlock().then((context) => {
+      document.body.dataset.audioState = context?.state ?? 'disabled';
+    });
     setPointer(event);
-    const targets: THREE.Object3D[] = [phone.receiver, ...phone.dialHitTargets];
+    const targets: THREE.Object3D[] = [
+      phone.receiver,
+      ...phone.dialHitTargets,
+      phone.dialTouchTarget,
+    ];
     const intersection = raycaster.intersectObjects(targets, true)[0];
     if (!intersection) return;
+
+    const receiverHit = belongsToReceiver(intersection.object);
+    let dialDigit: number | null = null;
+    if (!receiverHit) {
+      localHitPoint.copy(intersection.point);
+      dialReference.worldToLocal(localHitPoint);
+      const explicitDigit = Number(intersection.object.userData.digit);
+      if (Number.isInteger(explicitDigit)) {
+        dialDigit = explicitDigit;
+      } else {
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        phone.dialHitTargets.forEach((target) => {
+          const distance = Math.hypot(
+            localHitPoint.x - target.position.x,
+            localHitPoint.y - target.position.y,
+          );
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            dialDigit = Number(target.userData.digit);
+          }
+        });
+        if (nearestDistance > 0.34) dialDigit = null;
+      }
+      if (dialDigit === null) return;
+    }
 
     activePointer = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
     controls.enabled = false;
 
-    if (belongsToReceiver(intersection.object)) {
+    if (receiverHit) {
       interaction = 'receiver';
       controller.beginReceiverDrag();
       camera.getWorldDirection(planeNormal);
@@ -387,8 +701,7 @@ try {
       dragPlane.setFromNormalAndCoplanarPoint(planeNormal, hitPoint);
       document.body.style.cursor = 'grabbing';
     } else {
-      const digit = Number(intersection.object.userData.digit);
-      if (!controller.beginDialDrag(digit)) {
+      if (dialDigit === null || !controller.beginDialDrag(dialDigit)) {
         activePointer = null;
         controls.enabled = true;
         canvas.releasePointerCapture(event.pointerId);
@@ -396,12 +709,14 @@ try {
       }
       interaction = 'dial';
       phone.dialPivot.getWorldPosition(hitPoint);
-      hitPoint.project(camera);
-      dialCenter.set(
-        (hitPoint.x * 0.5 + 0.5) * window.innerWidth,
-        (-hitPoint.y * 0.5 + 0.5) * window.innerHeight,
+      dialReference.getWorldQuaternion(dialWorldQuaternion);
+      planeNormal.set(0, 0, 1).applyQuaternion(dialWorldQuaternion).normalize();
+      dragPlane.setFromNormalAndCoplanarPoint(planeNormal, hitPoint);
+      localHitPoint.copy(intersection.point);
+      dialReference.worldToLocal(localHitPoint);
+      dialGesture = beginDialGesture(
+        -Math.atan2(localHitPoint.y, localHitPoint.x),
       );
-      dialStartPointerAngle = Math.atan2(event.clientY - dialCenter.y, event.clientX - dialCenter.x);
       document.body.style.cursor = 'grabbing';
     }
   };
@@ -409,7 +724,11 @@ try {
   const onPointerMove = (event: PointerEvent) => {
     setPointer(event);
     if (activePointer === null || event.pointerId !== activePointer || !interaction) {
-      const hoverTargets: THREE.Object3D[] = [phone.receiver, ...phone.dialHitTargets];
+      const hoverTargets: THREE.Object3D[] = [
+        phone.receiver,
+        ...phone.dialHitTargets,
+        phone.dialTouchTarget,
+      ];
       document.body.style.cursor = raycaster.intersectObjects(hoverTargets, true).length ? 'grab' : '';
       return;
     }
@@ -418,16 +737,20 @@ try {
       localHitPoint.copy(hitPoint);
       phone.root.worldToLocal(localHitPoint);
       controller.dragReceiver(localHitPoint);
-    } else if (interaction === 'dial') {
-      const current = Math.atan2(event.clientY - dialCenter.y, event.clientX - dialCenter.x);
-      let clockwise = current - dialStartPointerAngle;
-      while (clockwise < 0) clockwise += Math.PI * 2;
-      controller.dragDial(clockwise);
+    } else if (interaction === 'dial' && raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
+      if (!dialGesture) return;
+      localHitPoint.copy(hitPoint);
+      dialReference.worldToLocal(localHitPoint);
+      if (Math.hypot(localHitPoint.x, localHitPoint.y) < 0.34) return;
+      const current = -Math.atan2(localHitPoint.y, localHitPoint.x);
+      dialGesture = advanceDialGesture(dialGesture, current);
+      controller.dragDial(dialGesture.clockwiseTravel);
     }
   };
 
   const onPointerUp = (event: PointerEvent) => {
     if (activePointer === null || event.pointerId !== activePointer) return;
+    const audioReady = audio.unlock();
     if (interaction === 'receiver') {
       controller.endReceiverDrag();
     } else if (interaction === 'dial') {
@@ -436,14 +759,30 @@ try {
     canvas.releasePointerCapture(event.pointerId);
     activePointer = null;
     interaction = null;
+    dialGesture = null;
     controls.enabled = true;
     document.body.style.cursor = '';
+    if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    void audioReady.then((context) => {
+      document.body.dataset.audioState = context?.state ?? 'disabled';
+      if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    });
+  };
+
+  const onTouchEndAudio = () => {
+    const audioReady = audio.unlock();
+    if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    void audioReady.then((context) => {
+      document.body.dataset.audioState = context?.state ?? 'disabled';
+      if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    });
   };
 
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
+  document.addEventListener('touchend', onTouchEndAudio, { passive: true });
 
   window.addEventListener('keydown', (event) => {
     void audio.unlock();
@@ -457,12 +796,16 @@ try {
   });
 
   const onResize = () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    applyResponsiveSceneLayout();
     renderer.setSize(window.innerWidth, window.innerHeight);
   };
   window.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || controller.snapshot().state === 'on-hook') return;
+    void audio.unlock().then(() => audio.startDialTone());
+  });
 
   const timer = new THREE.Timer();
   timer.connect(document);
@@ -493,6 +836,7 @@ try {
     table.geometry.dispose();
     tableMaterial.dispose();
     contactNote.dispose();
+    setDecor.dispose();
     wall.geometry.dispose();
     wallMaterial.dispose();
     scene.environment?.dispose();

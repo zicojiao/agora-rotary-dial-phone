@@ -31,11 +31,14 @@ body {
     radial-gradient(circle at 70% 22%, #354044 0, #1c262a 36%, #0f1619 78%),
     var(--ink);
   color: var(--ivory);
+  overscroll-behavior: none;
 }
 
 button {
   color: inherit;
   font: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 #scene {
@@ -105,6 +108,14 @@ h1 {
   background: #8c8a7b;
   box-shadow: 0 0 0 4px rgba(140, 138, 123, 0.1);
   transition: background 240ms ease, box-shadow 240ms ease;
+}
+
+.mobile-guide {
+  display: none;
+}
+
+.mobile-contact-note {
+  display: none;
 }
 
 body[data-phone-state="off-hook"] .status-dot,
@@ -180,7 +191,7 @@ body[data-phone-state="dialing"] .status-dot {
 .controls {
   position: fixed;
   z-index: 7;
-  bottom: clamp(50px, 4.6vw, 68px);
+  bottom: clamp(22px, 3vw, 42px);
   left: 50%;
   display: flex;
   gap: 9px;
@@ -223,11 +234,17 @@ body[data-phone-state="dialing"] .status-dot {
   transform: translateY(-1px);
 }
 
+.controls button:active,
+.error-panel button:active {
+  background: rgba(56, 64, 56, 0.82);
+  transform: translateY(0) scale(0.985);
+}
+
 .instructions {
   position: fixed;
   z-index: 5;
   right: clamp(22px, 4vw, 58px);
-  bottom: clamp(22px, 3vw, 42px);
+  bottom: clamp(50px, 4.6vw, 68px);
   display: grid;
   gap: 7px;
   max-width: 380px;
@@ -365,36 +382,160 @@ body[data-phone-state="dialing"] .status-dot {
 
 @media (max-width: 850px) {
   .masthead {
-    padding: 20px;
+    padding:
+      max(15px, env(safe-area-inset-top))
+      16px
+      0;
+  }
+
+  .eyebrow {
+    margin-bottom: 7px;
+    font-size: 8px;
   }
 
   h1 {
-    font-size: 29px;
+    font-size: clamp(23px, 7vw, 29px);
+    line-height: 0.88;
   }
 
   .status {
+    gap: 7px;
+    max-width: 132px;
+    padding: 7px 9px;
+    font-size: 9px;
+    line-height: 1.2;
+    text-align: right;
+  }
+
+  .status-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+  }
+
+  .mobile-guide {
+    position: fixed;
+    top: calc(max(15px, env(safe-area-inset-top)) + 77px);
+    left: 16px;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    max-width: calc(100vw - 32px);
+    margin: 0;
     padding: 8px 10px;
-    max-width: 140px;
+    border: 1px solid rgba(238, 228, 208, 0.13);
+    border-radius: 2px;
+    background: rgba(16, 19, 17, 0.58);
+    color: rgba(238, 228, 208, 0.76);
+    font-size: 9px;
+    letter-spacing: 0.035em;
+    line-height: 1.25;
+    backdrop-filter: blur(10px) saturate(0.82);
+    pointer-events: none;
+  }
+
+  .mobile-guide span:first-child {
+    color: var(--copper);
+    font-family: "SFMono-Regular", monospace;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  .mobile-contact-note {
+    position: fixed;
+    top: calc(max(15px, env(safe-area-inset-top)) + 126px);
+    right: 18px;
+    z-index: 5;
+    display: grid;
+    width: 164px;
+    min-height: 78px;
+    padding: 10px 12px 9px;
+    border: 1px solid rgba(72, 52, 33, 0.4);
+    background:
+      linear-gradient(102deg, rgba(255, 255, 255, 0.11), transparent 42%),
+      #d3c19d;
+    box-shadow: 0 8px 22px rgba(5, 7, 6, 0.22);
+    color: #34271d;
+    transform: rotate(-2.2deg);
+    pointer-events: none;
+  }
+
+  .mobile-contact-note::before {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #87643e;
+    box-shadow: 0 1px 1px rgba(255, 255, 255, 0.28) inset;
+    content: "";
+  }
+
+  .mobile-contact-note span {
+    color: #855f36;
+    font-size: 6px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .mobile-contact-note strong {
+    align-self: end;
+    font-family: "Avenir Next Condensed", "Arial Narrow", sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .mobile-contact-note b {
+    align-self: end;
+    padding-top: 5px;
+    border-top: 1px solid rgba(72, 52, 33, 0.24);
+    font-family: "SFMono-Regular", "Cascadia Code", monospace;
+    font-size: 12px;
+    letter-spacing: 0.045em;
+    line-height: 1;
+    text-transform: uppercase;
   }
 
   .dial-readout {
-    bottom: 88px;
-    width: min(344px, calc(100vw - 34px));
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    width: calc(100vw - 28px);
+    padding: 7px 14px 9px;
+  }
+
+  .dial-readout .readout-label {
+    margin-bottom: 4px;
+    font-size: 8px;
+    letter-spacing: 0.18em;
+  }
+
+  #number-display {
+    min-height: 27px;
+    font-size: clamp(22px, 7.2vw, 30px);
   }
 
   .controls {
-    bottom: 20px;
-    width: calc(100vw - 34px);
-    justify-content: center;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    width: calc(100vw - 28px);
+    gap: 8px;
   }
 
   .controls button {
-    padding: 0 11px;
+    width: 100%;
+    min-height: 50px;
+    padding: 0 13px;
+    font-size: 12px;
   }
 
   .controls button:first-child {
-    min-width: 128px;
-    gap: 16px;
+    min-width: 0;
+    gap: 18px;
   }
 
   .instructions {
@@ -402,12 +543,105 @@ body[data-phone-state="dialing"] .status-dot {
   }
 
   .agora-signature {
-    right: 20px;
-    bottom: 84px;
+    right: 14px;
+    bottom: calc(5px + env(safe-area-inset-bottom));
     max-width: 190px;
-    font-size: 7px;
+    font-size: 6px;
     line-height: 1.4;
     text-align: right;
+  }
+}
+
+@media (max-width: 850px) and (max-height: 700px) {
+  h1 {
+    font-size: 22px;
+  }
+
+  .mobile-guide {
+    top: calc(max(12px, env(safe-area-inset-top)) + 67px);
+    padding-block: 6px;
+  }
+
+  .dial-readout {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .controls {
+    bottom: calc(15px + env(safe-area-inset-bottom));
+  }
+
+  .controls button {
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 380px) {
+  h1 {
+    font-size: 21px;
+  }
+
+  .status {
+    max-width: 112px;
+    padding: 6px 8px;
+    font-size: 8px;
+  }
+
+  .mobile-guide {
+    top: calc(max(12px, env(safe-area-inset-top)) + 66px);
+  }
+}
+
+@media (max-width: 980px) and (max-height: 600px) and (orientation: landscape) {
+  .masthead {
+    padding: max(12px, env(safe-area-inset-top)) 18px 0;
+  }
+
+  .eyebrow {
+    margin-bottom: 5px;
+  }
+
+  h1 {
+    font-size: 21px;
+  }
+
+  .status {
+    max-width: 150px;
+  }
+
+  .mobile-guide {
+    top: auto;
+    right: auto;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 18px;
+    display: inline-flex;
+    max-width: 230px;
+  }
+
+  .mobile-contact-note {
+    display: none;
+  }
+
+  .dial-readout {
+    bottom: calc(68px + env(safe-area-inset-bottom));
+    width: 300px;
+  }
+
+  .controls {
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: 320px;
+  }
+
+  .controls button {
+    min-height: 46px;
+  }
+
+  .instructions {
+    display: none;
+  }
+
+  .agora-signature {
+    right: 18px;
+    bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
 

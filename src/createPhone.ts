@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { clockwiseTravelToStop } from './dialPhysics';
 
 export type PhoneMaterials = {
   greenBakelite: THREE.MeshPhysicalMaterial;
@@ -20,6 +21,8 @@ export type PhoneModel = {
   receiverHomeQuaternion: THREE.Quaternion;
   dialPivot: THREE.Group;
   dialHitTargets: THREE.Mesh[];
+  dialTouchTarget: THREE.Mesh;
+  dialTravelByDigit: ReadonlyMap<number, number>;
   hookSwitches: [THREE.Group, THREE.Group];
   bodyCordSocket: THREE.Object3D;
   receiverCordSocket: THREE.Object3D;
@@ -523,7 +526,9 @@ function createDial(materials: PhoneMaterials): {
   assembly: THREE.Group;
   pivot: THREE.Group;
   hitTargets: THREE.Mesh[];
+  touchTarget: THREE.Mesh;
   digitTextures: THREE.Texture[];
+  travelByDigit: ReadonlyMap<number, number>;
 } {
   const assembly = new THREE.Group();
   assembly.name = 'dial-assembly';
@@ -571,12 +576,33 @@ function createDial(materials: PhoneMaterials): {
   innerRim.position.z = 0.065;
   pivot.add(innerRim);
 
+  const touchTarget = new THREE.Mesh(
+    new THREE.RingGeometry(0.55, 1.18, 64),
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false,
+    }),
+  );
+  touchTarget.position.z = 0.18;
+  touchTarget.userData.kind = 'dial-surface';
+  pivot.add(touchTarget);
+
   const hitTargets: THREE.Mesh[] = [];
   const digitTextures: THREE.Texture[] = [];
+  const travelByDigit = new Map<number, number>();
   const digitRadius = 0.9;
+  const fingerStopPosition = new THREE.Vector2(0.92, -0.75);
+  const fingerStopRotation = -0.74;
+  const fingerStopOuterTip = new THREE.Vector2(0, 0.31)
+    .rotateAround(new THREE.Vector2(), fingerStopRotation)
+    .add(fingerStopPosition);
+  const fingerStopAngle = Math.atan2(fingerStopOuterTip.y, fingerStopOuterTip.x);
   const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
   digits.forEach((digit, index) => {
     const angle = THREE.MathUtils.degToRad(45 + index * 30);
+    travelByDigit.set(digit, clockwiseTravelToStop(angle, fingerStopAngle));
     const x = Math.cos(angle) * digitRadius;
     const y = Math.sin(angle) * digitRadius;
     const digitTexture = createDigitTexture(digit);
@@ -640,11 +666,11 @@ function createDial(materials: PhoneMaterials): {
     new RoundedBoxGeometry(0.18, 0.62, 0.17, 4, 0.06),
     materials.nickel,
   );
-  stop.position.set(0.92, -0.75, 0.19);
-  stop.rotation.z = -0.74;
+  stop.position.set(fingerStopPosition.x, fingerStopPosition.y, 0.19);
+  stop.rotation.z = fingerStopRotation;
   assembly.add(stop);
 
-  return { assembly, pivot, hitTargets, digitTextures };
+  return { assembly, pivot, hitTargets, touchTarget, digitTextures, travelByDigit };
 }
 
 function createCordGeometry(start: THREE.Vector3, end: THREE.Vector3, lifted: boolean) {
@@ -849,6 +875,8 @@ export function createPhoneModel(): PhoneModel {
     receiverHomeQuaternion,
     dialPivot: dial.pivot,
     dialHitTargets: dial.hitTargets,
+    dialTouchTarget: dial.touchTarget,
+    dialTravelByDigit: dial.travelByDigit,
     hookSwitches,
     bodyCordSocket,
     receiverCordSocket: receiverData.cordSocket,

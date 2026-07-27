@@ -1,3 +1,49 @@
+function isAppleMobileBrowser() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function createDialToneDataUrl() {
+  const sampleRate = 22050;
+  const sampleCount = sampleRate;
+  const bytes = new Uint8Array(44 + sampleCount * 2);
+  const view = new DataView(bytes.buffer);
+  const writeText = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      bytes[offset + index] = value.charCodeAt(index);
+    }
+  };
+
+  writeText(0, 'RIFF');
+  view.setUint32(4, 36 + sampleCount * 2, true);
+  writeText(8, 'WAVE');
+  writeText(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeText(36, 'data');
+  view.setUint32(40, sampleCount * 2, true);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const time = index / sampleRate;
+    const sample = (
+      Math.sin(Math.PI * 2 * 350 * time)
+      + Math.sin(Math.PI * 2 * 440 * time)
+    ) * 0.2;
+    view.setInt16(44 + index * 2, Math.round(sample * 32767), true);
+  }
+
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  }
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
 export class PhoneAudio {
   private context: AudioContext | null = null;
   private output: {
@@ -5,11 +51,31 @@ export class PhoneAudio {
     line: GainNode;
     mechanical: GainNode;
   } | null = null;
+  private resumePromise: Promise<void> | null = null;
   private dialTone: { oscillators: OscillatorNode[]; gain: GainNode } | null = null;
+  private dialToneElement: HTMLAudioElement | null = null;
+  private dialToneElementPlaying = false;
   private _enabled = true;
+
+  constructor() {
+    if (!isAppleMobileBrowser()) return;
+    this.dialToneElement = new Audio(createDialToneDataUrl());
+    this.dialToneElement.loop = true;
+    this.dialToneElement.preload = 'auto';
+    this.dialToneElement.volume = 0.36;
+    this.dialToneElement.setAttribute('playsinline', '');
+  }
 
   get enabled() {
     return this._enabled;
+  }
+
+  get route() {
+    return this.dialToneElement ? 'native-media' : 'web-audio';
+  }
+
+  get lineActive() {
+    return this.dialToneElementPlaying || Boolean(this.dialTone);
   }
 
   setEnabled(enabled: boolean) {
@@ -19,12 +85,18 @@ export class PhoneAudio {
 
   unlock() {
     if (!this._enabled) return Promise.resolve(null);
-    return this.activate();
+    const context = this.ensureContext();
+    const wakeBuffer = context.createBuffer(1, 1, context.sampleRate);
+    const wakeSource = context.createBufferSource();
+    wakeSource.buffer = wakeBuffer;
+    wakeSource.connect(this.bus('line'));
+    wakeSource.start(0);
+    return this.resume(context);
   }
 
-  private async activate() {
+  private ensureContext() {
     if (!this.context) {
-      this.context = new AudioContext();
+      this.context = new AudioContext({ latencyHint: 'interactive' });
       const master = this.context.createDynamicsCompressor();
       master.threshold.value = -18;
       master.knee.value = 10;
@@ -41,8 +113,26 @@ export class PhoneAudio {
       master.connect(this.context.destination);
       this.output = { master, line, mechanical };
     }
-    if (this.context.state === 'suspended') await this.context.resume();
     return this.context;
+  }
+
+  private async resume(context: AudioContext) {
+    const state = context.state as string;
+    if (state !== 'running' && state !== 'closed') {
+      if (!this.resumePromise) {
+        this.resumePromise = context.resume()
+          .catch(() => undefined)
+          .finally(() => {
+            this.resumePromise = null;
+          });
+      }
+      await this.resumePromise;
+    }
+    return context;
+  }
+
+  private activate() {
+    return this.resume(this.ensureContext());
   }
 
   private bus(kind: 'line' | 'mechanical') {
@@ -51,13 +141,22 @@ export class PhoneAudio {
   }
 
   async startDialTone() {
-    if (!this._enabled || this.dialTone) return;
+    if (!this._enabled || this.dialTone || this.dialToneElementPlaying) return;
+    if (this.dialToneElement) {
+      this.dialToneElementPlaying = true;
+      try {
+        await this.dialToneElement.play();
+      } catch {
+        this.dialToneElementPlaying = false;
+      }
+      return;
+    }
     const context = await this.activate();
     if (!this._enabled || this.dialTone) return;
 
     const gain = context.createGain();
     gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.014, context.currentTime + 0.16);
+    gain.gain.exponentialRampToValueAtTime(0.052, context.currentTime + 0.16);
     gain.connect(this.bus('line'));
 
     const oscillators = [350, 440].map((frequency) => {
@@ -72,6 +171,11 @@ export class PhoneAudio {
   }
 
   stopDialTone() {
+    if (this.dialToneElement) {
+      this.dialToneElement.pause();
+      this.dialToneElement.currentTime = 0;
+      this.dialToneElementPlaying = false;
+    }
     if (!this.context || !this.dialTone) return;
     const { oscillators, gain } = this.dialTone;
     const now = this.context.currentTime;
@@ -89,7 +193,7 @@ export class PhoneAudio {
     oscillator.type = 'triangle';
     oscillator.frequency.setValueAtTime(lifted ? 128 : 94, context.currentTime);
     oscillator.frequency.exponentialRampToValueAtTime(42, context.currentTime + 0.09);
-    gain.gain.setValueAtTime(0.048, context.currentTime);
+    gain.gain.setValueAtTime(0.105, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.11);
     oscillator.connect(gain).connect(this.bus('line'));
     oscillator.start();
@@ -169,10 +273,39 @@ export class PhoneAudio {
     oscillator.stop(context.currentTime + 0.19);
   }
 
+  async playDialStop() {
+    if (!this._enabled) return;
+    const context = await this.activate();
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const filter = context.createBiquadFilter();
+
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(920, now);
+    oscillator.frequency.exponentialRampToValueAtTime(310, now + 0.045);
+    filter.type = 'bandpass';
+    filter.frequency.value = 1100;
+    filter.Q.value = 1.8;
+    gain.gain.setValueAtTime(0.085, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.052);
+    oscillator.connect(filter).connect(gain).connect(this.bus('mechanical'));
+    oscillator.start(now);
+    oscillator.stop(now + 0.055);
+
+    await this.playNoiseClick(0.13, 1350, 0.038);
+  }
+
   dispose() {
     this.stopDialTone();
+    if (this.dialToneElement) {
+      this.dialToneElement.removeAttribute('src');
+      this.dialToneElement.load();
+      this.dialToneElement = null;
+    }
     void this.context?.close();
     this.context = null;
     this.output = null;
+    this.resumePromise = null;
   }
 }

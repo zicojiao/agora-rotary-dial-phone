@@ -15,6 +15,9 @@ export type PhoneSnapshot = {
   state: PhoneState;
   digits: string;
   dialProgress: number;
+  dialDigit: number | null;
+  dialPhase: DialMotion['phase'] | null;
+  dialAtStop: boolean;
 };
 
 type DialMotion = {
@@ -65,6 +68,9 @@ export class PhoneController {
       state: this.state,
       digits: this.digits,
       dialProgress: THREE.MathUtils.clamp(Math.abs(angle / maximum), 0, 1),
+      dialDigit: this.dialMotion?.digit ?? null,
+      dialPhase: this.dialMotion?.phase ?? null,
+      dialAtStop: this.dialMotion?.reachedStop ?? false,
     };
   }
 
@@ -89,6 +95,7 @@ export class PhoneController {
   hangUp() {
     if (this.state === 'on-hook') return;
     this.dialMotion = null;
+    this.digits = '';
     this.model.dialPivot.rotation.z = 0;
     this.state = 'on-hook';
     this.receiverDragging = false;
@@ -153,8 +160,7 @@ export class PhoneController {
   }
 
   private dialMaximum(digit: number) {
-    const pulses = digit === 0 ? 10 : digit;
-    return THREE.MathUtils.degToRad(48 + pulses * 17.6);
+    return this.model.dialTravelByDigit.get(digit) ?? THREE.MathUtils.degToRad(84);
   }
 
   quickDial(digit: number) {
@@ -199,9 +205,15 @@ export class PhoneController {
 
   dragDial(clockwiseAngle: number) {
     if (!this.dialMotion || this.dialMotion.phase !== 'held') return;
-    this.dialMotion.angle = THREE.MathUtils.clamp(clockwiseAngle, 0, this.dialMotion.maximum);
-    if (this.dialMotion.maximum - this.dialMotion.angle <= THREE.MathUtils.degToRad(1.5)) {
+    const nextAngle = THREE.MathUtils.clamp(clockwiseAngle, 0, this.dialMotion.maximum);
+    this.dialMotion.angle = Math.max(this.dialMotion.angle, nextAngle);
+    if (
+      !this.dialMotion.reachedStop
+      && this.dialMotion.maximum - this.dialMotion.angle <= THREE.MathUtils.degToRad(1.5)
+    ) {
       this.dialMotion.reachedStop = true;
+      this.dialMotion.angle = this.dialMotion.maximum;
+      void this.audio.playDialStop();
     }
     this.playWindNotch(this.dialMotion);
     this.model.dialPivot.rotation.z = -this.dialMotion.angle;
@@ -230,6 +242,8 @@ export class PhoneController {
     if (!motion) return;
     if (motion.reachedStop) {
       this.digits = `${this.digits}${motion.digit}`.slice(-16);
+    } else if (!this.digits) {
+      void this.audio.startDialTone();
     }
     this.model.dialPivot.rotation.z = 0;
     this.dialMotion = null;
@@ -265,8 +279,10 @@ export class PhoneController {
         this.playWindNotch(motion);
         if (motion.maximum - motion.angle < 0.018) {
           motion.angle = motion.maximum;
+          motion.reachedStop = true;
           motion.phase = 'returning';
           motion.velocity = 0;
+          void this.audio.playDialStop();
           void this.audio.playDialRelease();
         }
       } else if (motion.phase === 'returning') {
