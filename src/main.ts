@@ -1,0 +1,507 @@
+import './style.css';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
+import { createPhoneModel } from './createPhone';
+import { PhoneAudio } from './PhoneAudio';
+import { PhoneController, type PhoneSnapshot } from './PhoneController';
+
+const canvas = document.querySelector<HTMLCanvasElement>('#scene');
+const loading = document.querySelector<HTMLElement>('#loading');
+const errorPanel = document.querySelector<HTMLElement>('#error-panel');
+const statusLabel = document.querySelector<HTMLElement>('#status-label');
+const numberDisplay = document.querySelector<HTMLOutputElement>('#number-display');
+const pulseProgress = document.querySelector<HTMLElement>('#pulse-progress');
+const receiverButton = document.querySelector<HTMLButtonElement>('#receiver-button');
+const receiverAction = document.querySelector<HTMLElement>('#receiver-action');
+const clearButton = document.querySelector<HTMLButtonElement>('#clear-button');
+
+if (
+  !canvas ||
+  !loading ||
+  !errorPanel ||
+  !statusLabel ||
+  !numberDisplay ||
+  !pulseProgress ||
+  !receiverButton ||
+  !receiverAction ||
+  !clearButton
+) {
+  throw new Error('Required interface controls are missing.');
+}
+
+function createWalnutTexture(renderer: THREE.WebGLRenderer) {
+  const width = 1024;
+  const height = 512;
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = width;
+  textureCanvas.height = height;
+  const context = textureCanvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D is required for the table texture.');
+
+  const gradient = context.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#4a2f1f');
+  gradient.addColorStop(0.55, '#291a12');
+  gradient.addColorStop(1, '#160e0a');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  const random = (() => {
+    let state = 4041934;
+    return () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  })();
+  for (let line = 0; line < 150; line += 1) {
+    const y = random() * height;
+    context.beginPath();
+    context.moveTo(0, y);
+    for (let x = 0; x <= width; x += 16) {
+      const wave = Math.sin(x * 0.014 + line * 1.7) * (3 + random() * 5);
+      context.lineTo(x, y + wave + (random() - 0.5) * 1.8);
+    }
+    context.strokeStyle = `rgba(${98 + Math.floor(random() * 40)}, ${51 + Math.floor(random() * 24)}, 27, ${0.035 + random() * 0.1})`;
+    context.lineWidth = 0.45 + random() * 2.2;
+    context.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2.2, 1.1);
+  texture.anisotropy = Math.min(12, renderer.capabilities.getMaxAnisotropy());
+  return texture;
+}
+
+function createPlasterTexture() {
+  const size = 512;
+  const textureCanvas = document.createElement('canvas');
+  textureCanvas.width = textureCanvas.height = size;
+  const context = textureCanvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D is required for the wall texture.');
+  const image = context.createImageData(size, size);
+  let state = 1934;
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    const grain = ((state / 4294967296) - 0.5) * 22;
+    image.data[offset] = 106 + grain;
+    image.data[offset + 1] = 104 + grain;
+    image.data[offset + 2] = 95 + grain;
+    image.data[offset + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 2);
+  return texture;
+}
+
+function createContactNote(renderer: THREE.WebGLRenderer) {
+  const width = 1024;
+  const height = 512;
+  const noteCanvas = document.createElement('canvas');
+  noteCanvas.width = width;
+  noteCanvas.height = height;
+  const context = noteCanvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D is required for the contact note.');
+
+  const paper = context.createLinearGradient(0, 0, width, height);
+  paper.addColorStop(0, '#dfd2b5');
+  paper.addColorStop(0.52, '#d5c5a4');
+  paper.addColorStop(1, '#c7b591');
+  context.fillStyle = paper;
+  context.fillRect(0, 0, width, height);
+
+  let state = 19121934;
+  const random = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+  for (let index = 0; index < 720; index += 1) {
+    const x = random() * width;
+    const y = random() * height;
+    const length = 5 + random() * 24;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(x + length, y + (random() - 0.5) * 2);
+    context.strokeStyle = `rgba(81, 64, 42, ${0.018 + random() * 0.03})`;
+    context.lineWidth = 0.45 + random() * 0.65;
+    context.stroke();
+  }
+
+  context.strokeStyle = 'rgba(76, 57, 34, 0.22)';
+  context.lineWidth = 2;
+  context.strokeRect(34, 30, width - 68, height - 60);
+  context.fillStyle = '#8b6237';
+  context.font = '700 25px "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif';
+  context.letterSpacing = '7px';
+  context.fillText('AGORA CONVERSATIONAL AI LINE', 76, 82);
+  context.fillRect(76, 118, width - 152, 2);
+
+  context.fillStyle = '#33271d';
+  context.font = '700 58px "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif';
+  context.letterSpacing = '4px';
+  context.fillText('ELON MUSK', 76, 198);
+  context.font = '700 66px "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif';
+  context.letterSpacing = '3px';
+  context.fillText('KLONDIKE 5-0193', 76, 292);
+
+  context.fillStyle = '#3b2c20';
+  context.fillRect(72, 330, width - 144, 90);
+  context.strokeStyle = 'rgba(64, 46, 28, 0.55)';
+  context.lineWidth = 3;
+  context.strokeRect(72, 330, width - 144, 90);
+  context.fillStyle = '#f1e4c6';
+  context.font = '700 58px "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif';
+  context.letterSpacing = '4px';
+  context.fillText('DIAL 555-0193', 104, 391);
+  context.fillStyle = '#d6bb8e';
+  context.font = '700 23px "Arial Narrow", Arial, sans-serif';
+  context.letterSpacing = '3px';
+  context.fillText('KL = 55 ON THE DIAL', 686, 386);
+
+  context.fillStyle = 'rgba(72, 52, 33, 0.58)';
+  context.font = '600 21px "Arial Narrow", Arial, sans-serif';
+  context.letterSpacing = '6px';
+  context.fillText('AI VOICE LINE · NEW YORK', 78, 468);
+
+  const texture = new THREE.CanvasTexture(noteCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(12, renderer.capabilities.getMaxAnisotropy());
+  texture.needsUpdate = true;
+
+  const noteWidth = 2.85;
+  const noteHeight = 1.425;
+  const geometry = new THREE.PlaneGeometry(noteWidth, noteHeight, 12, 6);
+  const positions = geometry.getAttribute('position');
+  for (let index = 0; index < positions.count; index += 1) {
+    const x = positions.getX(index);
+    const y = positions.getY(index);
+    const curledEdge = Math.pow(Math.abs(x) / (noteWidth / 2), 6) * 0.025;
+    const softenedCorner = Math.pow(Math.abs(y) / (noteHeight / 2), 8) * 0.01;
+    const paperRipple = Math.sin(x * 3.1 + y * 2.2) * 0.0025;
+    positions.setZ(index, curledEdge + softenedCorner + paperRipple);
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: '#d8c6a3',
+    map: texture,
+    roughness: 0.97,
+    metalness: 0,
+    envMapIntensity: 0.14,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const root = new THREE.Group();
+  root.name = 'contact-note';
+  root.position.set(4.48, 0.035, -1.56);
+  root.rotation.y = -0.16;
+  root.add(mesh);
+
+  return {
+    mesh: root,
+    dispose: () => {
+      geometry.dispose();
+      material.dispose();
+      texture.dispose();
+    },
+  };
+}
+
+try {
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: 'high-performance',
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.94;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#182125');
+  scene.fog = new THREE.FogExp2('#182125', 0.028);
+
+  const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.05, 80);
+  camera.position.set(8.6, 7.25, 10.9);
+  scene.add(camera);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  scene.environment = pmrem.fromScene(room, 0.035).texture;
+  room.dispose();
+
+  RectAreaLightUniformsLib.init();
+  const key = new THREE.RectAreaLight('#ffe5bf', 22, 5.8, 4.1);
+  key.position.set(-4.2, 7.7, 5.4);
+  key.lookAt(0, 1, 0);
+  scene.add(key);
+
+  const softbox = new THREE.SpotLight('#ffd9aa', 40, 24, 0.72, 0.8, 1.4);
+  softbox.position.set(-4.7, 8.2, 5.8);
+  softbox.target.position.set(0, 1.1, 0.2);
+  softbox.castShadow = true;
+  softbox.shadow.mapSize.set(2048, 2048);
+  softbox.shadow.camera.near = 1;
+  softbox.shadow.camera.far = 20;
+  softbox.shadow.bias = -0.00035;
+  scene.add(softbox, softbox.target);
+
+  const rim = new THREE.DirectionalLight('#bfd8d0', 2.7);
+  rim.position.set(5.5, 5, -6);
+  scene.add(rim);
+  const fill = new THREE.HemisphereLight('#b9c7bf', '#2a160f', 0.94);
+  scene.add(fill);
+
+  const walnutTexture = createWalnutTexture(renderer);
+  const tableMaterial = new THREE.MeshPhysicalMaterial({
+    color: '#352116',
+    map: walnutTexture,
+    roughness: 0.68,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.76,
+    specularIntensity: 0.42,
+    envMapIntensity: 0.48,
+  });
+  const table = new THREE.Mesh(new THREE.BoxGeometry(18, 0.56, 13), tableMaterial);
+  table.position.set(0, -0.28, 0.5);
+  table.receiveShadow = true;
+  scene.add(table);
+
+  const contactNote = createContactNote(renderer);
+  scene.add(contactNote.mesh);
+
+  const plasterTexture = createPlasterTexture();
+  const wallMaterial = new THREE.MeshStandardMaterial({
+    color: '#747a76',
+    map: plasterTexture,
+    roughness: 0.98,
+  });
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(46, 24), wallMaterial);
+  wall.position.set(0, 5.6, -4.6);
+  wall.receiveShadow = true;
+  scene.add(wall);
+
+  const phone = createPhoneModel();
+  phone.root.rotation.y = -0.08;
+  phone.root.position.set(0.35, 0, -0.05);
+  scene.add(phone.root);
+
+  const audio = new PhoneAudio();
+  const controller = new PhoneController(phone, audio);
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0.2, 0.85, 0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.055;
+  controls.minDistance = 9.4;
+  controls.maxDistance = 17;
+  controls.minPolarAngle = THREE.MathUtils.degToRad(42);
+  controls.maxPolarAngle = THREE.MathUtils.degToRad(77);
+  controls.minAzimuthAngle = THREE.MathUtils.degToRad(-58);
+  controls.maxAzimuthAngle = THREE.MathUtils.degToRad(58);
+
+  const updateUi = (snapshot: PhoneSnapshot) => {
+    document.body.dataset.phoneState = snapshot.state;
+    statusLabel.textContent = snapshot.state === 'on-hook'
+      ? 'Receiver cradled'
+      : snapshot.state === 'dialing'
+        ? 'Dial turning'
+        : 'Line ready';
+    receiverAction.textContent = snapshot.state === 'on-hook' ? 'Lift receiver' : 'Hang up';
+    numberDisplay.value = snapshot.digits || '—';
+    numberDisplay.textContent = snapshot.digits || '—';
+    numberDisplay.dataset.density = snapshot.digits.length >= 13
+      ? 'compact'
+      : snapshot.digits.length >= 9
+        ? 'long'
+        : 'standard';
+    pulseProgress.style.transform = `translateX(${(snapshot.dialProgress - 1) * 100}%)`;
+  };
+  controller.subscribe(updateUi);
+
+  receiverButton.addEventListener('click', () => {
+    void audio.unlock();
+    controller.toggleReceiver();
+  });
+  clearButton.addEventListener('click', () => controller.clearDigits());
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const planeNormal = new THREE.Vector3();
+  const hitPoint = new THREE.Vector3();
+  const localHitPoint = new THREE.Vector3();
+  const dialCenter = new THREE.Vector2();
+  let activePointer: number | null = null;
+  let interaction: 'receiver' | 'dial' | null = null;
+  let dialStartPointerAngle = 0;
+
+  const setPointer = (event: PointerEvent) => {
+    pointer.set(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+  };
+
+  const belongsToReceiver = (object: THREE.Object3D) => {
+    let current: THREE.Object3D | null = object;
+    while (current) {
+      if (current === phone.receiver) return true;
+      current = current.parent;
+    }
+    return false;
+  };
+
+  const onPointerDown = (event: PointerEvent) => {
+    if (activePointer !== null || event.button !== 0) return;
+    void audio.unlock();
+    setPointer(event);
+    const targets: THREE.Object3D[] = [phone.receiver, ...phone.dialHitTargets];
+    const intersection = raycaster.intersectObjects(targets, true)[0];
+    if (!intersection) return;
+
+    activePointer = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    controls.enabled = false;
+
+    if (belongsToReceiver(intersection.object)) {
+      interaction = 'receiver';
+      controller.beginReceiverDrag();
+      camera.getWorldDirection(planeNormal);
+      phone.receiver.getWorldPosition(hitPoint);
+      dragPlane.setFromNormalAndCoplanarPoint(planeNormal, hitPoint);
+      document.body.style.cursor = 'grabbing';
+    } else {
+      const digit = Number(intersection.object.userData.digit);
+      if (!controller.beginDialDrag(digit)) {
+        activePointer = null;
+        controls.enabled = true;
+        canvas.releasePointerCapture(event.pointerId);
+        return;
+      }
+      interaction = 'dial';
+      phone.dialPivot.getWorldPosition(hitPoint);
+      hitPoint.project(camera);
+      dialCenter.set(
+        (hitPoint.x * 0.5 + 0.5) * window.innerWidth,
+        (-hitPoint.y * 0.5 + 0.5) * window.innerHeight,
+      );
+      dialStartPointerAngle = Math.atan2(event.clientY - dialCenter.y, event.clientX - dialCenter.x);
+      document.body.style.cursor = 'grabbing';
+    }
+  };
+
+  const onPointerMove = (event: PointerEvent) => {
+    setPointer(event);
+    if (activePointer === null || event.pointerId !== activePointer || !interaction) {
+      const hoverTargets: THREE.Object3D[] = [phone.receiver, ...phone.dialHitTargets];
+      document.body.style.cursor = raycaster.intersectObjects(hoverTargets, true).length ? 'grab' : '';
+      return;
+    }
+
+    if (interaction === 'receiver' && raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
+      localHitPoint.copy(hitPoint);
+      phone.root.worldToLocal(localHitPoint);
+      controller.dragReceiver(localHitPoint);
+    } else if (interaction === 'dial') {
+      const current = Math.atan2(event.clientY - dialCenter.y, event.clientX - dialCenter.x);
+      let clockwise = current - dialStartPointerAngle;
+      while (clockwise < 0) clockwise += Math.PI * 2;
+      controller.dragDial(clockwise);
+    }
+  };
+
+  const onPointerUp = (event: PointerEvent) => {
+    if (activePointer === null || event.pointerId !== activePointer) return;
+    if (interaction === 'receiver') {
+      controller.endReceiverDrag();
+    } else if (interaction === 'dial') {
+      controller.releaseDial();
+    }
+    canvas.releasePointerCapture(event.pointerId);
+    activePointer = null;
+    interaction = null;
+    controls.enabled = true;
+    document.body.style.cursor = '';
+  };
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+
+  window.addEventListener('keydown', (event) => {
+    void audio.unlock();
+    if (/^[0-9]$/.test(event.key)) controller.quickDial(Number(event.key));
+    if (event.code === 'Space' && !event.repeat) {
+      event.preventDefault();
+      void controller.toggleReceiver();
+    }
+    if (event.key === 'Escape') void controller.hangUp();
+    if (event.key === 'Backspace') controller.clearDigits();
+  });
+
+  const onResize = () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+  window.addEventListener('resize', onResize);
+
+  const timer = new THREE.Timer();
+  timer.connect(document);
+  let firstFrame = true;
+  renderer.setAnimationLoop(() => {
+    timer.update();
+    const delta = timer.getDelta();
+    controller.update(delta);
+    controls.update();
+    renderer.render(scene, camera);
+    if (firstFrame) {
+      firstFrame = false;
+      requestAnimationFrame(() => {
+        document.body.classList.remove('is-booting');
+        loading.classList.add('is-hidden');
+      });
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    renderer.setAnimationLoop(null);
+    timer.dispose();
+    controls.dispose();
+    phone.dispose();
+    audio.dispose();
+    walnutTexture.dispose();
+    plasterTexture.dispose();
+    table.geometry.dispose();
+    tableMaterial.dispose();
+    contactNote.dispose();
+    wall.geometry.dispose();
+    wallMaterial.dispose();
+    scene.environment?.dispose();
+    pmrem.dispose();
+    renderer.dispose();
+  }, { once: true });
+} catch (error) {
+  console.error(error);
+  document.body.classList.remove('is-booting');
+  loading.classList.add('is-hidden');
+  errorPanel.hidden = false;
+}
