@@ -1,4 +1,3 @@
-import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -6,7 +5,19 @@ import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLigh
 import { createPhoneModel } from './createPhone';
 import { PhoneAudio } from './PhoneAudio';
 import { PhoneController, type PhoneSnapshot } from './PhoneController';
+import {
+  AI_PHONE_NUMBER,
+  CALL_LIMIT_SECONDS,
+  formatCallTime,
+} from './callPolicy';
 import { advanceDialGesture, beginDialGesture, type DialGesture } from './dialPhysics';
+import {
+  CALL_STATE_EVENT,
+  PHONE_FORCE_HANGUP_EVENT,
+  PHONE_SNAPSHOT_EVENT,
+  type CallStateEventDetail,
+  type PhoneSnapshotEventDetail,
+} from './phoneEvents';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene');
 const loading = document.querySelector<HTMLElement>('#loading');
@@ -485,6 +496,10 @@ try {
   const audio = new PhoneAudio();
   document.body.dataset.audioRoute = audio.route;
   const controller = new PhoneController(phone, audio);
+  let callState: CallStateEventDetail = {
+    phase: 'idle',
+    secondsRemaining: CALL_LIMIT_SECONDS,
+  };
   const dialReference = phone.dialPivot.parent ?? phone.root;
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0.2, 0.85, 0);
@@ -562,25 +577,49 @@ try {
 
   const updateUi = (snapshot: PhoneSnapshot) => {
     document.body.dataset.phoneState = snapshot.state;
-    statusLabel.textContent = snapshot.state === 'on-hook'
-      ? 'Receiver cradled'
-      : snapshot.state === 'dialing'
-        ? snapshot.dialPhase === 'held'
-          ? snapshot.dialAtStop
-            ? `${snapshot.dialDigit} at stop — release`
-            : `Turn ${snapshot.dialDigit} clockwise`
-          : snapshot.dialPhase === 'returning'
-            ? `${snapshot.dialDigit} returning`
-            : 'Dial turning'
-        : 'Line ready';
-    readoutLabel.textContent = snapshot.state === 'dialing'
-      ? snapshot.dialPhase === 'held'
-        ? snapshot.dialAtStop
-          ? `Release ${snapshot.dialDigit} to register`
-          : `Turn ${snapshot.dialDigit} to the metal stop`
-        : `Registering ${snapshot.dialDigit}`
-      : 'Number registered';
-    if (snapshot.state === 'on-hook') {
+    document.body.dataset.callState = callState.phase;
+    statusLabel.textContent = callState.phase === 'connecting'
+      ? 'Calling Elon Musk…'
+      : callState.phase === 'connected'
+        ? `Elon Musk · ${formatCallTime(callState.secondsRemaining)}`
+        : callState.phase === 'ending'
+          ? 'Ending AI call…'
+          : callState.phase === 'invalid-number'
+            ? 'Number not in service'
+            : callState.phase === 'error'
+              ? 'AI line unavailable'
+              : snapshot.state === 'on-hook'
+                ? 'Receiver cradled'
+                : snapshot.state === 'dialing'
+                  ? snapshot.dialPhase === 'held'
+                    ? snapshot.dialAtStop
+                      ? `${snapshot.dialDigit} at stop — release`
+                      : `Turn ${snapshot.dialDigit} clockwise`
+                    : snapshot.dialPhase === 'returning'
+                      ? `${snapshot.dialDigit} returning`
+                      : 'Dial turning'
+                  : 'Line ready';
+    readoutLabel.textContent = callState.phase === 'connecting'
+      ? 'Calling Elon Musk'
+      : callState.phase === 'connected'
+        ? 'Call with Elon Musk'
+        : callState.phase === 'ending'
+          ? 'Closing the line'
+          : callState.phase === 'invalid-number'
+            ? 'Clear the number and dial 555-0193 again'
+            : callState.phase === 'error'
+              ? 'Please clear the number and try again'
+              : snapshot.state === 'dialing'
+                ? snapshot.dialPhase === 'held'
+                  ? snapshot.dialAtStop
+                    ? `Release ${snapshot.dialDigit} to register`
+                    : `Turn ${snapshot.dialDigit} to the metal stop`
+                  : `Registering ${snapshot.dialDigit}`
+                : 'Number registered';
+    if (callState.phase === 'invalid-number') {
+      mobileGuideStep.textContent = '04';
+      mobileGuideText.textContent = 'Clear the number and dial 555-0193 again';
+    } else if (snapshot.state === 'on-hook') {
       mobileGuideStep.textContent = '01';
       mobileGuideText.textContent = 'Lift the receiver to begin';
     } else if (snapshot.state === 'off-hook') {
@@ -597,6 +636,11 @@ try {
       mobileGuideText.textContent = `Let ${snapshot.dialDigit} return`;
     }
     receiverAction.textContent = snapshot.state === 'on-hook' ? 'Lift receiver' : 'Hang up';
+    clearButton.disabled = (
+      callState.phase === 'connecting'
+      || callState.phase === 'connected'
+      || callState.phase === 'ending'
+    );
     numberDisplay.value = snapshot.digits || '—';
     numberDisplay.textContent = snapshot.digits || '—';
     numberDisplay.dataset.density = snapshot.digits.length >= 13
@@ -606,7 +650,61 @@ try {
         : 'standard';
     pulseProgress.style.transform = `translateX(${(snapshot.dialProgress - 1) * 100}%)`;
   };
-  controller.subscribe(updateUi);
+  let lastPhoneEvent = '';
+  controller.subscribe((snapshot) => {
+    updateUi(snapshot);
+    const eventKey = `${snapshot.state}:${snapshot.digits}`;
+    if (eventKey === lastPhoneEvent) return;
+    lastPhoneEvent = eventKey;
+    window.dispatchEvent(
+      new CustomEvent<PhoneSnapshotEventDetail>(PHONE_SNAPSHOT_EVENT, {
+        detail: {
+          state: snapshot.state,
+          digits: snapshot.digits,
+        },
+      }),
+    );
+  });
+
+  const handleCallState = (event: Event) => {
+    const detail = (event as CustomEvent<CallStateEventDetail>).detail;
+    if (!detail) return;
+    callState = detail;
+    if (detail.phase === 'invalid-number') {
+      audio.stopLineAmbience();
+      audio.stopDialTone();
+      document.body.dataset.lineSignal = 'wrong-number';
+      void audio.startWrongNumberTone().then(() => {
+        document.body.dataset.lineAudio = audio.lineActive ? 'active' : 'blocked';
+      });
+    } else {
+      audio.stopWrongNumberTone();
+      document.body.dataset.lineSignal = detail.phase;
+      if (detail.phase === 'connected') {
+        void audio.startLineAmbience();
+      } else {
+        audio.stopLineAmbience();
+      }
+    }
+    if (
+      detail.phase === 'connecting'
+      || detail.phase === 'connected'
+      || detail.phase === 'ending'
+    ) {
+      audio.stopDialTone();
+    } else if (
+      detail.phase === 'idle'
+      && controller.snapshot().state !== 'on-hook'
+    ) {
+      void audio.startDialTone();
+    }
+    updateUi(controller.snapshot());
+  };
+  const handleForcedHangup = () => {
+    controller.hangUp();
+  };
+  window.addEventListener(CALL_STATE_EVENT, handleCallState);
+  window.addEventListener(PHONE_FORCE_HANGUP_EVENT, handleForcedHangup);
 
   receiverButton.addEventListener('click', async () => {
     const audioReady = audio.unlock();
@@ -667,6 +765,15 @@ try {
     const receiverHit = belongsToReceiver(intersection.object);
     let dialDigit: number | null = null;
     if (!receiverHit) {
+      if (
+        callState.phase === 'connecting'
+        || callState.phase === 'connected'
+        || callState.phase === 'ending'
+        || callState.phase === 'invalid-number'
+        || controller.snapshot().digits.length >= AI_PHONE_NUMBER.length
+      ) {
+        return;
+      }
       localHitPoint.copy(intersection.point);
       dialReference.worldToLocal(localHitPoint);
       const explicitDigit = Number(intersection.object.userData.digit);
@@ -762,19 +869,29 @@ try {
     dialGesture = null;
     controls.enabled = true;
     document.body.style.cursor = '';
-    if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    const canPlayDialTone = (
+      controller.snapshot().state !== 'on-hook'
+      && (callState.phase === 'idle' || callState.phase === 'error')
+    );
+    if (canPlayDialTone) void audio.startDialTone();
     void audioReady.then((context) => {
       document.body.dataset.audioState = context?.state ?? 'disabled';
-      if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+      if (canPlayDialTone) void audio.startDialTone();
+      if (callState.phase === 'connected') void audio.startLineAmbience();
     });
   };
 
   const onTouchEndAudio = () => {
     const audioReady = audio.unlock();
-    if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+    const canPlayDialTone = (
+      controller.snapshot().state !== 'on-hook'
+      && (callState.phase === 'idle' || callState.phase === 'error')
+    );
+    if (canPlayDialTone) void audio.startDialTone();
     void audioReady.then((context) => {
       document.body.dataset.audioState = context?.state ?? 'disabled';
-      if (controller.snapshot().state !== 'on-hook') void audio.startDialTone();
+      if (canPlayDialTone) void audio.startDialTone();
+      if (callState.phase === 'connected') void audio.startLineAmbience();
     });
   };
 
@@ -786,7 +903,13 @@ try {
 
   window.addEventListener('keydown', (event) => {
     void audio.unlock();
-    if (/^[0-9]$/.test(event.key)) controller.quickDial(Number(event.key));
+    if (
+      /^[0-9]$/.test(event.key)
+      && (callState.phase === 'idle' || callState.phase === 'error')
+      && controller.snapshot().digits.length < AI_PHONE_NUMBER.length
+    ) {
+      controller.quickDial(Number(event.key));
+    }
     if (event.code === 'Space' && !event.repeat) {
       event.preventDefault();
       void controller.toggleReceiver();
@@ -803,7 +926,16 @@ try {
   window.visualViewport?.addEventListener('resize', onResize);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || controller.snapshot().state === 'on-hook') return;
+    if (
+      document.visibilityState !== 'visible'
+      || controller.snapshot().state === 'on-hook'
+      || (
+        callState.phase !== 'idle'
+        && callState.phase !== 'error'
+      )
+    ) {
+      return;
+    }
     void audio.unlock().then(() => audio.startDialTone());
   });
 
@@ -826,6 +958,8 @@ try {
   });
 
   window.addEventListener('pagehide', () => {
+    window.removeEventListener(CALL_STATE_EVENT, handleCallState);
+    window.removeEventListener(PHONE_FORCE_HANGUP_EVENT, handleForcedHangup);
     renderer.setAnimationLoop(null);
     timer.dispose();
     controls.dispose();

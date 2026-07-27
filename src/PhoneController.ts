@@ -106,6 +106,7 @@ export class PhoneController {
       hook.userData.targetY = 2.02;
     });
     this.audio.stopDialTone();
+    this.audio.stopLineAmbience();
     void this.audio.playHookClick(false);
     this.emit();
   }

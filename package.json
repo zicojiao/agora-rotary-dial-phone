@@ -3,19 +3,43 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "next dev --webpack",
+    "start": "next start",
     "test:physics": "node spec/test-dial-physics.mjs",
+    "test:call": "node --import tsx spec/test-call-policy.ts",
+    "test:call-exit": "node --import tsx spec/test-call-exit-policy.ts",
+    "test:call-readiness": "node --import tsx spec/test-call-readiness.ts",
+    "test:microphone": "node --import tsx spec/test-microphone-permission.ts",
+    "test:api": "node --import tsx spec/test-api-contracts.ts",
+    "test": "pnpm test:physics && pnpm test:call && pnpm test:call-exit && pnpm test:call-readiness && pnpm test:microphone && pnpm test:api",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "build": "next build",
+    "lint": "eslint ."
   },
   "dependencies": {
+    "agora-agent-client-toolkit": "1.2.0",
+    "agora-agents": "2.3.1",
+    "agora-rtc-react": "2.5.1",
+    "agora-rtc-sdk-ng": "4.24.3",
+    "agora-rtm": "2.2.3",
+    "agora-token": "2.0.5",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "three": "^0.185.0"
   },
   "devDependencies": {
+    "@types/node": "^22.19.15",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

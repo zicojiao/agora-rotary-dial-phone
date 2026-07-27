@@ -1,11 +1,25 @@
 # Agora Rotary Dial Phone
 
-An interactive 1930s rotary telephone rendered in Three.js. Lift the receiver,
-rotate a digit clockwise until its finger hole reaches the metal stop, and
-release it to register the number during the spring return.
+An interactive 1930s rotary telephone rendered in Three.js and connected to
+Agora Conversational AI. Lift the receiver and physically dial `5550193` to
+start a disclosed, fictional Elon-inspired AI conversation.
 
-The experience is designed as a foundation for an Agora Conversational AI voice
-call.
+Each digit registers only after the finger hole reaches the metal stop and the
+dial returns. The AI call starts its visible five-minute countdown only after
+the Agora agent joins the RTC channel. Manual hang-up and timeout use the same
+agent, RTC, RTM, microphone, receiver, and dial cleanup path.
+
+## Environment
+
+Create `.env.local` with server-managed Agora project credentials:
+
+```dotenv
+NEXT_PUBLIC_AGORA_APP_ID=
+NEXT_AGORA_APP_CERTIFICATE=
+NEXT_PUBLIC_AGENT_UID=123456
+```
+
+The App Certificate must never be exposed to client code or committed.
 
 ## Development
 
@@ -14,10 +28,11 @@ pnpm install
 pnpm dev
 ```
 
-## Production build
+## Verification
 
 ```bash
-pnpm test:physics
+pnpm lint
 pnpm typecheck
+pnpm test
 pnpm build
 ```

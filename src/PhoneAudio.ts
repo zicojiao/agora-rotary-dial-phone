@@ -53,6 +53,15 @@ export class PhoneAudio {
   } | null = null;
   private resumePromise: Promise<void> | null = null;
   private dialTone: { oscillators: OscillatorNode[]; gain: GainNode } | null = null;
+  private wrongNumberTone: {
+    oscillators: OscillatorNode[];
+    gain: GainNode;
+    timer: number;
+  } | null = null;
+  private lineAmbience: {
+    source: AudioBufferSourceNode;
+    gain: GainNode;
+  } | null = null;
   private dialToneElement: HTMLAudioElement | null = null;
   private dialToneElementPlaying = false;
   private _enabled = true;
@@ -75,12 +84,21 @@ export class PhoneAudio {
   }
 
   get lineActive() {
-    return this.dialToneElementPlaying || Boolean(this.dialTone);
+    return (
+      this.dialToneElementPlaying
+      || Boolean(this.dialTone)
+      || Boolean(this.wrongNumberTone)
+      || Boolean(this.lineAmbience)
+    );
   }
 
   setEnabled(enabled: boolean) {
     this._enabled = enabled;
-    if (!enabled) this.stopDialTone();
+    if (!enabled) {
+      this.stopDialTone();
+      this.stopWrongNumberTone();
+      this.stopLineAmbience();
+    }
   }
 
   unlock() {
@@ -142,6 +160,7 @@ export class PhoneAudio {
 
   async startDialTone() {
     if (!this._enabled || this.dialTone || this.dialToneElementPlaying) return;
+    this.stopWrongNumberTone();
     if (this.dialToneElement) {
       this.dialToneElementPlaying = true;
       try {
@@ -183,6 +202,105 @@ export class PhoneAudio {
     gain.gain.setTargetAtTime(0.0001, now, 0.025);
     oscillators.forEach((oscillator) => oscillator.stop(now + 0.12));
     this.dialTone = null;
+  }
+
+  async startWrongNumberTone() {
+    if (!this._enabled || this.wrongNumberTone) return;
+    this.stopDialTone();
+    const context = await this.activate();
+    if (!this._enabled || this.wrongNumberTone) return;
+
+    const gain = context.createGain();
+    gain.gain.value = 0.0001;
+    gain.connect(this.bus('line'));
+
+    const oscillators = [480, 620].map((frequency) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = frequency;
+      oscillator.connect(gain);
+      oscillator.start();
+      return oscillator;
+    });
+
+    const schedulePulse = () => {
+      if (!this.wrongNumberTone || this.context !== context) return;
+      const now = context.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.072, now + 0.012);
+      gain.gain.setValueAtTime(0.072, now + 0.22);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    };
+
+    const timer = window.setInterval(schedulePulse, 500);
+    this.wrongNumberTone = { oscillators, gain, timer };
+    schedulePulse();
+  }
+
+  stopWrongNumberTone() {
+    if (!this.context || !this.wrongNumberTone) return;
+    const { oscillators, gain, timer } = this.wrongNumberTone;
+    const now = this.context.currentTime;
+    window.clearInterval(timer);
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0.0001, now, 0.018);
+    oscillators.forEach((oscillator) => oscillator.stop(now + 0.08));
+    this.wrongNumberTone = null;
+  }
+
+  async startLineAmbience() {
+    if (!this._enabled || this.lineAmbience) return;
+    this.stopDialTone();
+    this.stopWrongNumberTone();
+    const context = await this.activate();
+    if (!this._enabled || this.lineAmbience) return;
+
+    const duration = 2;
+    const buffer = context.createBuffer(
+      1,
+      Math.ceil(context.sampleRate * duration),
+      context.sampleRate,
+    );
+    const channel = buffer.getChannelData(0);
+    let smoothed = 0;
+    for (let index = 0; index < channel.length; index += 1) {
+      smoothed = smoothed * 0.82 + (Math.random() * 2 - 1) * 0.18;
+      channel[index] = smoothed;
+    }
+
+    const source = context.createBufferSource();
+    const highpass = context.createBiquadFilter();
+    const lowpass = context.createBiquadFilter();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    highpass.type = 'highpass';
+    highpass.frequency.value = 260;
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 2_900;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(
+      0.006,
+      context.currentTime + 0.24,
+    );
+    source
+      .connect(highpass)
+      .connect(lowpass)
+      .connect(gain)
+      .connect(this.bus('line'));
+    source.start();
+    this.lineAmbience = { source, gain };
+  }
+
+  stopLineAmbience() {
+    if (!this.context || !this.lineAmbience) return;
+    const { source, gain } = this.lineAmbience;
+    const now = this.context.currentTime;
+    this.lineAmbience = null;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setTargetAtTime(0.0001, now, 0.025);
+    source.stop(now + 0.12);
   }
 
   async playHookClick(lifted: boolean) {
@@ -298,6 +416,8 @@ export class PhoneAudio {
 
   dispose() {
     this.stopDialTone();
+    this.stopWrongNumberTone();
+    this.stopLineAmbience();
     if (this.dialToneElement) {
       this.dialToneElement.removeAttribute('src');
       this.dialToneElement.load();
