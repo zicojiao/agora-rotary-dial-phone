@@ -16,14 +16,17 @@ export default function PhoneExperience() {
       />
 
       <header className="masthead">
-        <div>
-          <p className="eyebrow">New York · 1934</p>
-          <h1>
-            Agora
-            <br />
-            Telephone Co.
-          </h1>
-        </div>
+        <aside className="instructions" aria-label="How to use the telephone">
+          <p>
+            <span>01</span> Lift the receiver to open the line
+          </p>
+          <p>
+            <span>02</span> Dial the number marked on the Agora contact card
+          </p>
+          <p>
+            <span>03</span> Reach the stop and release every digit
+          </p>
+        </aside>
         <div className="status" aria-live="polite">
           <span className="status-dot" />
           <span id="status-label">Receiver cradled</span>
@@ -64,26 +67,22 @@ export default function PhoneExperience() {
         </button>
       </nav>
 
-      <aside className="instructions">
-        <p>
-          <span>01</span> Lift the receiver to open the line
-        </p>
-        <p>
-          <span>02</span> Dial the number marked on the Agora contact card
-        </p>
-        <p>
-          <span>03</span> Reach the stop and release every digit
-        </p>
-      </aside>
-
-      <p className="agora-signature">Conversational AI powered by Agora</p>
+      <p className="agora-signature">
+        <span className="agora-signature-primary">Conversational AI</span>
+        <span className="agora-signature-secondary">Powered by Agora</span>
+      </p>
 
       <div id="loading" className="loading" role="status">
-        <p className="loading-provenance">
-          Conversational AI powered by Agora
-        </p>
         <span className="loading-dial" aria-hidden="true" />
-        <p className="loading-brand">Agora Telephone Co.</p>
+        <p
+          className="loading-brand"
+          aria-label="Conversational AI powered by Agora"
+        >
+          <span className="loading-brand-primary">
+            Conversational <em>AI</em>
+          </span>
+          <span className="loading-brand-secondary">Powered by Agora</span>
+        </p>
         <p className="loading-message">Opening the exchange…</p>
       </div>
 

@@ -8,7 +8,9 @@
   --nickel: #bcc2bc;
   --copper: #b78143;
   --line: rgba(236, 229, 211, 0.2);
-  font-family: "Franklin Gothic Book", "Helvetica Neue", Arial, sans-serif;
+  --font-editorial: var(--font-playfair-display), "Playfair Display", Georgia, serif;
+  --font-ui: var(--font-ibm-plex-mono), "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-family: var(--font-ui);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -77,49 +79,34 @@ button {
   pointer-events: none;
 }
 
-.eyebrow,
 .readout-label {
   margin: 0 0 11px;
   color: var(--copper);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.24em;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-}
-
-h1 {
-  margin: 0;
-  color: #eee7d5;
-  font-family: "Avenir Next Condensed", "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif;
-  font-size: clamp(27px, 3.7vw, 58px);
-  font-stretch: condensed;
-  font-weight: 600;
-  letter-spacing: 0.035em;
-  line-height: 0.86;
-  text-transform: uppercase;
-  text-shadow: 0 3px 28px rgba(0, 0, 0, 0.25);
 }
 
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 13px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(20, 24, 21, 0.44);
-  color: var(--ivory-muted);
-  font-size: 11px;
+  gap: 9px;
+  padding: 5px 0 7px 11px;
+  border-bottom: 1px solid rgba(236, 229, 211, 0.22);
+  color: rgba(236, 229, 211, 0.7);
+  font-size: 10px;
+  font-weight: 400;
   letter-spacing: 0.08em;
-  backdrop-filter: blur(12px);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
 }
 
 .status-dot {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #8c8a7b;
-  box-shadow: 0 0 0 4px rgba(140, 138, 123, 0.1);
+  box-shadow: 0 0 0 3px rgba(140, 138, 123, 0.08);
   transition: background 240ms ease, box-shadow 240ms ease;
 }
 
@@ -163,15 +150,14 @@ body[data-call-state="invalid-number"] .status-dot {
   bottom: clamp(82px, 7.5vw, 104px);
   left: 50%;
   width: min(370px, calc(100vw - 42px));
-  padding: 8px 18px 10px;
-  border: 1px solid rgba(238, 228, 208, 0.13);
-  border-radius: 3px;
+  padding: 10px 22px 9px;
+  border-block: 1px solid rgba(238, 228, 208, 0.18);
+  border-inline: 0;
   background:
-    linear-gradient(90deg, rgba(16, 19, 17, 0.34), rgba(16, 19, 17, 0.68) 20%, rgba(16, 19, 17, 0.68) 80%, rgba(16, 19, 17, 0.34));
-  box-shadow: 0 12px 38px rgba(7, 9, 8, 0.14);
+    linear-gradient(90deg, transparent, rgba(12, 16, 14, 0.56) 18%, rgba(12, 16, 14, 0.56) 82%, transparent);
   transform: translateX(-50%);
   text-align: center;
-  backdrop-filter: blur(9px) saturate(0.82);
+  backdrop-filter: blur(5px) saturate(0.78);
   pointer-events: none;
 }
 
@@ -183,11 +169,12 @@ body[data-call-state="invalid-number"] .status-dot {
   display: block;
   min-height: 29px;
   color: #f3e9d5;
-  font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", monospace;
+  font-family: var(--font-ui);
   font-size: clamp(22px, 2.45vw, 34px);
-  font-weight: 300;
-  letter-spacing: 0.19em;
-  text-indent: 0.19em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
   transition: font-size 180ms ease, letter-spacing 180ms ease, text-indent 180ms ease;
 }
@@ -234,15 +221,16 @@ body[data-call-state="invalid-number"] .status-dot {
 .controls button,
 .error-panel button {
   min-height: 42px;
-  padding: 0 15px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: rgba(19, 23, 20, 0.6);
-  color: var(--ivory-muted);
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid rgba(236, 229, 211, 0.28);
+  background: linear-gradient(180deg, rgba(18, 23, 20, 0.32), rgba(18, 23, 20, 0.56));
+  color: rgba(236, 229, 211, 0.76);
   cursor: pointer;
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  backdrop-filter: blur(14px);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  backdrop-filter: blur(10px);
   transition: border-color 180ms ease, background 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
@@ -252,7 +240,7 @@ body[data-call-state="invalid-number"] .status-dot {
   gap: 28px;
   min-width: 142px;
   justify-content: space-between;
-  border-color: rgba(204, 175, 128, 0.42);
+  border-color: rgba(216, 173, 111, 0.62);
   color: #f0dfc2;
 }
 
@@ -261,7 +249,7 @@ body[data-call-state="invalid-number"] .status-dot {
 .error-panel button:hover,
 .error-panel button:focus-visible {
   border-color: rgba(228, 205, 165, 0.7);
-  background: rgba(47, 55, 48, 0.78);
+  background: rgba(45, 53, 47, 0.62);
   color: #fff2dc;
   outline: none;
   transform: translateY(-1px);
@@ -288,12 +276,11 @@ body[data-call-state="invalid-number"] .status-dot {
   width: min(240px, calc(100vw - 32px));
   gap: 5px;
   padding: 13px 15px;
-  border: 1px solid rgba(216, 173, 111, 0.28);
-  border-radius: 3px;
+  border: 0;
+  border-left: 1px solid rgba(216, 173, 111, 0.56);
   background:
-    linear-gradient(135deg, rgba(54, 65, 58, 0.4), rgba(11, 15, 14, 0.8)),
-    rgba(15, 19, 17, 0.82);
-  box-shadow: 0 18px 42px rgba(4, 7, 6, 0.28);
+    linear-gradient(90deg, rgba(11, 15, 14, 0.72), rgba(11, 15, 14, 0.22));
+  box-shadow: 0 16px 36px rgba(4, 7, 6, 0.16);
   color: var(--ivory);
   backdrop-filter: blur(16px) saturate(0.82);
   pointer-events: none;
@@ -303,26 +290,26 @@ body[data-call-state="invalid-number"] .status-dot {
 .ai-call-panel small {
   color: var(--copper);
   font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   line-height: 1.35;
   text-transform: uppercase;
 }
 
 .ai-call-panel strong {
-  font-family: "Avenir Next Condensed", "Arial Narrow", sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .ai-call-panel time {
   color: #f3e9d5;
-  font-family: "SFMono-Regular", "Cascadia Code", monospace;
+  font-family: var(--font-ui);
   font-size: 31px;
   font-variant-numeric: tabular-nums;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: 0.08em;
   line-height: 1.1;
 }
@@ -356,23 +343,14 @@ body[data-call-state="invalid-number"] .status-dot {
 }
 
 .instructions {
-  position: fixed;
-  z-index: 5;
-  right: clamp(22px, 4vw, 58px);
-  bottom: clamp(50px, 4.6vw, 68px);
   display: grid;
-  gap: 7px;
-  max-width: 380px;
-  padding: 12px 14px 13px;
-  border: 1px solid rgba(238, 228, 208, 0.13);
-  border-radius: 3px;
-  background: rgba(16, 19, 17, 0.66);
-  box-shadow: 0 12px 38px rgba(7, 9, 8, 0.14);
-  color: rgba(238, 228, 208, 0.78);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  line-height: 1.35;
-  backdrop-filter: blur(10px) saturate(0.82);
+  gap: 9px;
+  max-width: min(400px, 42vw);
+  color: rgba(238, 228, 208, 0.84);
+  font-size: clamp(10.5px, 0.78vw, 12px);
+  letter-spacing: 0.015em;
+  line-height: 1.45;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.72);
   pointer-events: none;
 }
 
@@ -381,26 +359,46 @@ body[data-call-state="invalid-number"] .status-dot {
   right: clamp(22px, 4vw, 58px);
   bottom: clamp(22px, 3vw, 42px);
   z-index: 5;
+  display: grid;
+  gap: 6px;
   margin: 0;
-  color: rgba(238, 228, 208, 0.58);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  line-height: 1;
-  text-transform: uppercase;
+  text-align: right;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
   pointer-events: none;
 }
 
+.agora-signature-primary {
+  color: rgba(238, 228, 208, 0.9);
+  font-family: var(--font-editorial);
+  font-size: clamp(18px, 1.55vw, 24px);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+}
+
+.agora-signature-secondary {
+  color: var(--copper);
+  font-size: clamp(7px, 0.55vw, 8px);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .instructions p {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 4px;
   margin: 0;
 }
 
 .instructions span {
-  display: inline-block;
-  width: 25px;
   color: var(--copper);
-  font-family: "SFMono-Regular", monospace;
+  font-family: var(--font-ui);
+  font-size: 0.9em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
 }
 
 .loading {
@@ -446,23 +444,42 @@ body[data-call-state="invalid-number"] .status-dot {
   background: var(--copper);
 }
 
-.loading-provenance,
 .loading-message {
   margin: 0;
   color: var(--copper);
   font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.24em;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
 .loading-brand {
+  display: grid;
+  gap: 10px;
   margin: 0;
+}
+
+.loading-brand-primary {
   color: #eee7d5;
-  font-family: "Avenir Next Condensed", "Arial Narrow", "Franklin Gothic Medium", Arial, sans-serif;
-  font-size: clamp(22px, 2.7vw, 34px);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: var(--font-editorial);
+  font-size: clamp(30px, 3.1vw, 48px);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.loading-brand-primary em {
+  color: var(--copper);
+  font-weight: 400;
+}
+
+.loading-brand-secondary {
+  color: var(--copper);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
@@ -502,22 +519,47 @@ body[data-call-state="invalid-number"] .status-dot {
   }
 }
 
+@media (min-width: 851px) {
+  .instructions {
+    gap: 11px;
+    max-width: min(480px, 45vw);
+    font-size: clamp(12px, 0.9vw, 13px);
+  }
+
+  .instructions p {
+    grid-template-columns: 32px 1fr;
+  }
+
+  .status {
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .agora-signature {
+    gap: 7px;
+  }
+
+  .agora-signature-primary {
+    font-size: clamp(26px, 2.1vw, 30px);
+  }
+
+  .agora-signature-secondary {
+    font-size: clamp(8px, 0.65vw, 9px);
+  }
+}
+
 @media (max-width: 850px) {
   .masthead {
+    justify-content: flex-end;
     padding:
       max(15px, env(safe-area-inset-top))
       16px
       0;
-  }
-
-  .eyebrow {
-    margin-bottom: 7px;
-    font-size: 8px;
-  }
-
-  h1 {
-    font-size: clamp(23px, 7vw, 29px);
-    line-height: 0.88;
   }
 
   .status {
@@ -559,7 +601,7 @@ body[data-call-state="invalid-number"] .status-dot {
 
   .mobile-guide {
     position: fixed;
-    top: calc(max(15px, env(safe-area-inset-top)) + 77px);
+    top: calc(max(15px, env(safe-area-inset-top)) + 48px);
     left: 16px;
     z-index: 6;
     display: inline-flex;
@@ -567,28 +609,29 @@ body[data-call-state="invalid-number"] .status-dot {
     gap: 9px;
     max-width: calc(100vw - 32px);
     margin: 0;
-    padding: 8px 10px;
-    border: 1px solid rgba(238, 228, 208, 0.13);
-    border-radius: 2px;
-    background: rgba(16, 19, 17, 0.58);
-    color: rgba(238, 228, 208, 0.76);
-    font-size: 9px;
-    letter-spacing: 0.035em;
-    line-height: 1.25;
-    backdrop-filter: blur(10px) saturate(0.82);
+    padding: 6px 4px 6px 10px;
+    border: 0;
+    border-left: 1px solid rgba(216, 173, 111, 0.72);
+    background: linear-gradient(90deg, rgba(12, 16, 14, 0.54), transparent);
+    color: rgba(238, 228, 208, 0.82);
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+    line-height: 1.35;
+    backdrop-filter: blur(7px) saturate(0.78);
     pointer-events: none;
   }
 
   .mobile-guide span:first-child {
     color: var(--copper);
-    font-family: "SFMono-Regular", monospace;
+    font-family: var(--font-ui);
     font-size: 8px;
+    font-weight: 500;
     letter-spacing: 0.12em;
   }
 
   .mobile-contact-note {
     position: fixed;
-    top: calc(max(15px, env(safe-area-inset-top)) + 126px);
+    top: calc(max(15px, env(safe-area-inset-top)) + 97px);
     right: 18px;
     z-index: 5;
     display: grid;
@@ -620,16 +663,17 @@ body[data-call-state="invalid-number"] .status-dot {
   .mobile-contact-note span {
     color: #855f36;
     font-size: 6px;
-    font-weight: 700;
+    font-weight: 500;
     letter-spacing: 0.18em;
     text-transform: uppercase;
   }
 
   .mobile-contact-note strong {
     align-self: end;
-    font-family: "Avenir Next Condensed", "Arial Narrow", sans-serif;
-    font-size: 15px;
-    letter-spacing: 0.08em;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
     line-height: 1;
     text-transform: uppercase;
   }
@@ -638,9 +682,10 @@ body[data-call-state="invalid-number"] .status-dot {
     align-self: end;
     padding-top: 5px;
     border-top: 1px solid rgba(72, 52, 33, 0.24);
-    font-family: "SFMono-Regular", "Cascadia Code", monospace;
-    font-size: 12px;
-    letter-spacing: 0.045em;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
     line-height: 1;
     text-transform: uppercase;
   }
@@ -674,7 +719,7 @@ body[data-call-state="invalid-number"] .status-dot {
     width: 100%;
     min-height: 50px;
     padding: 0 13px;
-    font-size: 12px;
+    font-size: 10.5px;
   }
 
   .controls button:first-child {
@@ -687,22 +732,25 @@ body[data-call-state="invalid-number"] .status-dot {
   }
 
   .agora-signature {
-    right: 14px;
-    bottom: calc(5px + env(safe-area-inset-bottom));
-    max-width: 190px;
-    font-size: 6px;
-    line-height: 1.4;
+    right: 16px;
+    bottom: calc(168px + env(safe-area-inset-bottom));
+    max-width: 210px;
+    gap: 4px;
     text-align: right;
+  }
+
+  .agora-signature-primary {
+    font-size: 17px;
+  }
+
+  .agora-signature-secondary {
+    font-size: 6.5px;
   }
 }
 
 @media (max-width: 850px) and (max-height: 700px) {
-  h1 {
-    font-size: 22px;
-  }
-
   .mobile-guide {
-    top: calc(max(12px, env(safe-area-inset-top)) + 67px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 43px);
     padding-block: 6px;
   }
 
@@ -720,10 +768,6 @@ body[data-call-state="invalid-number"] .status-dot {
 }
 
 @media (max-width: 380px) {
-  h1 {
-    font-size: 21px;
-  }
-
   .status {
     max-width: 112px;
     padding: 6px 8px;
@@ -731,21 +775,13 @@ body[data-call-state="invalid-number"] .status-dot {
   }
 
   .mobile-guide {
-    top: calc(max(12px, env(safe-area-inset-top)) + 66px);
+    top: calc(max(12px, env(safe-area-inset-top)) + 42px);
   }
 }
 
 @media (max-width: 980px) and (max-height: 600px) and (orientation: landscape) {
   .masthead {
     padding: max(12px, env(safe-area-inset-top)) 18px 0;
-  }
-
-  .eyebrow {
-    margin-bottom: 5px;
-  }
-
-  h1 {
-    font-size: 21px;
   }
 
   .status {
@@ -786,6 +822,10 @@ body[data-call-state="invalid-number"] .status-dot {
   .agora-signature {
     right: 18px;
     bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .agora-signature-primary {
+    font-size: 15px;
   }
 }
 

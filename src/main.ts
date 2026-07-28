@@ -588,16 +588,18 @@ try {
             ? 'Number not in service'
             : callState.phase === 'error'
               ? 'AI line unavailable'
-              : snapshot.state === 'on-hook'
-                ? 'Receiver cradled'
-                : snapshot.state === 'dialing'
-                  ? snapshot.dialPhase === 'held'
+              : snapshot.state === 'dialing'
+                ? snapshot.receiverState === 'on-hook'
+                  ? 'Mechanical dial · receiver cradled'
+                  : snapshot.dialPhase === 'held'
                     ? snapshot.dialAtStop
                       ? `${snapshot.dialDigit} at stop — release`
                       : `Turn ${snapshot.dialDigit} clockwise`
                     : snapshot.dialPhase === 'returning'
                       ? `${snapshot.dialDigit} returning`
                       : 'Dial turning'
+                : snapshot.receiverState === 'on-hook'
+                  ? 'Receiver cradled'
                   : 'Line ready';
     readoutLabel.textContent = callState.phase === 'connecting'
       ? 'Calling Elon Musk'
@@ -610,18 +612,22 @@ try {
             : callState.phase === 'error'
               ? 'Please clear the number and try again'
               : snapshot.state === 'dialing'
-                ? snapshot.dialPhase === 'held'
-                  ? snapshot.dialAtStop
-                    ? `Release ${snapshot.dialDigit} to register`
-                    : `Turn ${snapshot.dialDigit} to the metal stop`
-                  : `Registering ${snapshot.dialDigit}`
+                ? snapshot.receiverState === 'on-hook'
+                  ? 'Lift the receiver to register a number'
+                  : snapshot.dialPhase === 'held'
+                    ? snapshot.dialAtStop
+                      ? `Release ${snapshot.dialDigit} to register`
+                      : `Turn ${snapshot.dialDigit} to the metal stop`
+                    : `Registering ${snapshot.dialDigit}`
                 : 'Number registered';
     if (callState.phase === 'invalid-number') {
       mobileGuideStep.textContent = '04';
       mobileGuideText.textContent = 'Clear the number and dial 555-0193 again';
-    } else if (snapshot.state === 'on-hook') {
+    } else if (snapshot.receiverState === 'on-hook') {
       mobileGuideStep.textContent = '01';
-      mobileGuideText.textContent = 'Lift the receiver to begin';
+      mobileGuideText.textContent = snapshot.state === 'dialing'
+        ? 'Lift the receiver before dialing a number'
+        : 'Lift the receiver to begin';
     } else if (snapshot.state === 'off-hook') {
       mobileGuideStep.textContent = '02';
       mobileGuideText.textContent = 'Choose a number and turn clockwise';
@@ -635,7 +641,10 @@ try {
       mobileGuideStep.textContent = '03';
       mobileGuideText.textContent = `Let ${snapshot.dialDigit} return`;
     }
-    receiverAction.textContent = snapshot.state === 'on-hook' ? 'Lift receiver' : 'Hang up';
+    receiverAction.textContent = snapshot.receiverState === 'on-hook'
+      ? 'Lift receiver'
+      : 'Hang up';
+    receiverButton.disabled = snapshot.state === 'dialing';
     clearButton.disabled = (
       callState.phase === 'connecting'
       || callState.phase === 'connected'
@@ -653,13 +662,14 @@ try {
   let lastPhoneEvent = '';
   controller.subscribe((snapshot) => {
     updateUi(snapshot);
-    const eventKey = `${snapshot.state}:${snapshot.digits}`;
+    const eventKey = `${snapshot.receiverState}:${snapshot.state}:${snapshot.digits}`;
     if (eventKey === lastPhoneEvent) return;
     lastPhoneEvent = eventKey;
     window.dispatchEvent(
       new CustomEvent<PhoneSnapshotEventDetail>(PHONE_SNAPSHOT_EVENT, {
         detail: {
           state: snapshot.state,
+          receiverState: snapshot.receiverState,
           digits: snapshot.digits,
         },
       }),
@@ -694,7 +704,7 @@ try {
       audio.stopDialTone();
     } else if (
       detail.phase === 'idle'
-      && controller.snapshot().state !== 'on-hook'
+      && controller.snapshot().receiverState === 'off-hook'
     ) {
       void audio.startDialTone();
     }
@@ -711,7 +721,7 @@ try {
     controller.toggleReceiver();
     const context = await audioReady;
     document.body.dataset.audioState = context?.state ?? 'disabled';
-    if (controller.snapshot().state !== 'on-hook') {
+    if (controller.snapshot().receiverState === 'off-hook') {
       await audio.startDialTone();
       document.body.dataset.lineAudio = audio.lineActive ? 'active' : 'blocked';
     } else {
@@ -763,6 +773,7 @@ try {
     if (!intersection) return;
 
     const receiverHit = belongsToReceiver(intersection.object);
+    if (receiverHit && controller.snapshot().state === 'dialing') return;
     let dialDigit: number | null = null;
     if (!receiverHit) {
       if (
@@ -870,7 +881,7 @@ try {
     controls.enabled = true;
     document.body.style.cursor = '';
     const canPlayDialTone = (
-      controller.snapshot().state !== 'on-hook'
+      controller.snapshot().receiverState === 'off-hook'
       && (callState.phase === 'idle' || callState.phase === 'error')
     );
     if (canPlayDialTone) void audio.startDialTone();
@@ -884,7 +895,7 @@ try {
   const onTouchEndAudio = () => {
     const audioReady = audio.unlock();
     const canPlayDialTone = (
-      controller.snapshot().state !== 'on-hook'
+      controller.snapshot().receiverState === 'off-hook'
       && (callState.phase === 'idle' || callState.phase === 'error')
     );
     if (canPlayDialTone) void audio.startDialTone();
@@ -928,7 +939,7 @@ try {
   document.addEventListener('visibilitychange', () => {
     if (
       document.visibilityState !== 'visible'
-      || controller.snapshot().state === 'on-hook'
+      || controller.snapshot().receiverState === 'on-hook'
       || (
         callState.phase !== 'idle'
         && callState.phase !== 'error'

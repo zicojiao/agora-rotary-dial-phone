@@ -7,6 +7,7 @@ export type PhoneMaterials = {
   blackBakelite: THREE.MeshPhysicalMaterial;
   blackMatte: THREE.MeshStandardMaterial;
   nickel: THREE.MeshPhysicalMaterial;
+  agedNickel: THREE.MeshPhysicalMaterial;
   dialMetal: THREE.MeshPhysicalMaterial;
   ivory: THREE.MeshStandardMaterial;
   darkCavity: THREE.MeshStandardMaterial;
@@ -54,7 +55,9 @@ function makeTextureSet(
     roughness: number;
     normalStrength: number;
     radial?: boolean;
+    concentric?: boolean;
     fibers?: boolean;
+    fineOnly?: boolean;
   },
 ): TextureSet {
   const size = 1024;
@@ -70,19 +73,30 @@ function makeTextureSet(
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const index = y * size + x;
-      const low = Math.sin(x * 0.037 + seed) * 0.32 + Math.cos(y * 0.043 - seed) * 0.28;
-      const meso = Math.sin((x + y) * 0.19) * 0.14;
+      const lowScale = options.fineOnly ? 0.16 : 1;
+      const mesoScale = options.fineOnly ? 0.18 : 1;
+      const low = (
+        Math.sin(x * 0.037 + seed) * 0.32
+        + Math.cos(y * 0.043 - seed) * 0.28
+      ) * lowScale;
+      const meso = Math.sin((x + y) * 0.19) * 0.14 * mesoScale;
       const micro = (random() - 0.5) * 0.38;
       const radial = options.radial
         ? Math.sin(Math.atan2(y - size / 2, x - size / 2) * 96 + Math.hypot(x - size / 2, y - size / 2) * 0.42) * 0.12
+        : 0;
+      const concentric = options.concentric
+        ? (
+            Math.sin(Math.hypot(x - size / 2, y - size / 2) * 0.82) * 0.018
+            + Math.sin(Math.hypot(x - size / 2, y - size / 2) * 0.19) * 0.009
+          )
         : 0;
       const fibers = options.fibers
         ? Math.sin(y * 0.72 + Math.sin(x * 0.034) * 2.4) * 0.055
           + Math.sin(x * 0.19 + y * 0.075) * 0.025
         : 0;
-      noise[index] = THREE.MathUtils.clamp(0.5 + low + meso + micro + radial + fibers, 0, 1);
+      noise[index] = THREE.MathUtils.clamp(0.5 + low + meso + micro + radial + concentric + fibers, 0, 1);
       height[index] = THREE.MathUtils.clamp(
-        0.5 + micro * 0.7 + meso * 0.22 + radial + fibers * 0.62,
+        0.5 + micro * 0.7 + meso * 0.22 + radial + concentric * 1.2 + fibers * 0.62,
         0,
         1,
       );
@@ -180,6 +194,13 @@ function createMaterials(): { materials: PhoneMaterials; textures: THREE.Texture
     normalStrength: 1.08,
     fibers: true,
   });
+  const dialMaps = makeTextureSet(1938, new THREE.Color('#756d5e'), {
+    variation: 0.075,
+    roughness: 0.74,
+    normalStrength: 2.2,
+    concentric: true,
+    fineOnly: true,
+  });
 
   const greenBakelite = new THREE.MeshPhysicalMaterial({
     color: '#ffffff',
@@ -225,14 +246,34 @@ function createMaterials(): { materials: PhoneMaterials; textures: THREE.Texture
     anisotropyRotation: Math.PI / 2,
     envMapIntensity: 1.22,
   });
+  const agedNickel = new THREE.MeshPhysicalMaterial({
+    color: '#857f73',
+    map: nickelMaps.albedo,
+    roughness: 0.88,
+    roughnessMap: nickelMaps.roughness,
+    metalness: 0.72,
+    normalMap: nickelMaps.normal,
+    normalScale: new THREE.Vector2(0.026, 0.026),
+    anisotropy: 0.5,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0.06,
+    clearcoatRoughness: 0.72,
+    envMapIntensity: 0.58,
+  });
   const dialMetal = new THREE.MeshPhysicalMaterial({
-    color: '#70695b',
-    roughness: 0.92,
-    metalness: 0.46,
-    clearcoat: 0.02,
-    clearcoatRoughness: 0.9,
-    specularIntensity: 0.3,
-    envMapIntensity: 0.2,
+    color: '#ffffff',
+    map: dialMaps.albedo,
+    roughness: 0.9,
+    roughnessMap: dialMaps.roughness,
+    metalness: 0.16,
+    normalMap: dialMaps.normal,
+    normalScale: new THREE.Vector2(0.022, 0.022),
+    aoMap: dialMaps.ao,
+    aoMapIntensity: 0.78,
+    clearcoat: 0.16,
+    clearcoatRoughness: 0.68,
+    specularIntensity: 0.62,
+    envMapIntensity: 0.66,
   });
   const ivory = new THREE.MeshStandardMaterial({
     color: '#bea982',
@@ -263,6 +304,7 @@ function createMaterials(): { materials: PhoneMaterials; textures: THREE.Texture
       blackBakelite,
       blackMatte,
       nickel,
+      agedNickel,
       dialMetal,
       ivory,
       darkCavity,
@@ -273,6 +315,7 @@ function createMaterials(): { materials: PhoneMaterials; textures: THREE.Texture
       ...Object.values(blackMaps),
       ...Object.values(nickelMaps),
       ...Object.values(ivoryMaps),
+      ...Object.values(dialMaps),
     ],
   };
 }
@@ -555,11 +598,33 @@ function createDial(materials: PhoneMaterials): {
   pivot.position.z = 0.16;
   assembly.add(pivot);
 
+  const digitRadius = 0.9;
+  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  const digitPositions = digits.map((digit, index) => {
+    const angle = THREE.MathUtils.degToRad(45 + index * 30);
+    return {
+      digit,
+      angle,
+      x: Math.cos(angle) * digitRadius,
+      y: Math.sin(angle) * digitRadius,
+    };
+  });
+  const wheelShape = new THREE.Shape();
+  wheelShape.absarc(0, 0, 1.2, 0, Math.PI * 2, false);
+  const centerOpening = new THREE.Path();
+  centerOpening.absarc(0, 0, 0.48, 0, Math.PI * 2, true);
+  wheelShape.holes.push(centerOpening);
+  digitPositions.forEach(({ x, y }) => {
+    const fingerOpening = new THREE.Path();
+    fingerOpening.absarc(x, y, 0.215, 0, Math.PI * 2, true);
+    wheelShape.holes.push(fingerOpening);
+  });
+
   const wheelPlate = makeMesh(
-    new THREE.RingGeometry(0.48, 1.2, 96, 4),
+    new THREE.ShapeGeometry(wheelShape, 24),
     materials.dialMetal,
   );
-  wheelPlate.position.z = 0.015;
+  wheelPlate.position.z = 0.02;
   pivot.add(wheelPlate);
 
   const outerRim = makeMesh(
@@ -575,6 +640,16 @@ function createDial(materials: PhoneMaterials): {
   );
   innerRim.position.z = 0.065;
   pivot.add(innerRim);
+
+  for (const radius of [0.545, 1.145]) {
+    const groove = makeMesh(
+      new THREE.TorusGeometry(radius, 0.007, 6, 96),
+      materials.darkCavity,
+      { cast: false },
+    );
+    groove.position.z = 0.034;
+    pivot.add(groove);
+  }
 
   const touchTarget = new THREE.Mesh(
     new THREE.RingGeometry(0.55, 1.18, 64),
@@ -592,41 +667,54 @@ function createDial(materials: PhoneMaterials): {
   const hitTargets: THREE.Mesh[] = [];
   const digitTextures: THREE.Texture[] = [];
   const travelByDigit = new Map<number, number>();
-  const digitRadius = 0.9;
   const fingerStopPosition = new THREE.Vector2(0.92, -0.75);
   const fingerStopRotation = -0.74;
   const fingerStopOuterTip = new THREE.Vector2(0, 0.31)
     .rotateAround(new THREE.Vector2(), fingerStopRotation)
     .add(fingerStopPosition);
   const fingerStopAngle = Math.atan2(fingerStopOuterTip.y, fingerStopOuterTip.x);
-  const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
-  digits.forEach((digit, index) => {
-    const angle = THREE.MathUtils.degToRad(45 + index * 30);
+  const cavityGeometry = new THREE.CircleGeometry(0.207, 40);
+  const cavityLipGeometry = new THREE.TorusGeometry(0.178, 0.031, 12, 48);
+  const labelGeometry = new THREE.CircleGeometry(0.136, 40);
+  const fingerRimGeometry = new THREE.TorusGeometry(0.215, 0.031, 14, 48);
+  digitPositions.forEach(({ digit, angle, x, y }) => {
     travelByDigit.set(digit, clockwiseTravelToStop(angle, fingerStopAngle));
-    const x = Math.cos(angle) * digitRadius;
-    const y = Math.sin(angle) * digitRadius;
     const digitTexture = createDigitTexture(digit);
     digitTextures.push(digitTexture);
 
+    const cavity = makeMesh(cavityGeometry, materials.darkCavity, {
+      cast: false,
+      receive: true,
+    });
+    cavity.position.set(x, y, -0.018);
+    pivot.add(cavity);
+
+    const cavityLip = makeMesh(cavityLipGeometry, materials.darkCavity, {
+      cast: false,
+      receive: true,
+    });
+    cavityLip.position.set(x, y, 0.002);
+    pivot.add(cavityLip);
+
     const label = makeMesh(
-      new THREE.CircleGeometry(0.185, 32),
+      labelGeometry,
       new THREE.MeshStandardMaterial({
         map: digitTexture,
-        color: '#c0aa82',
-        roughness: 0.98,
+        color: '#d0ba91',
+        roughness: 0.88,
         metalness: 0,
-        envMapIntensity: 0.1,
+        envMapIntensity: 0.16,
       }),
       { cast: false },
     );
-    label.position.set(x, y, 0.075);
+    label.position.set(x, y, 0.008);
     pivot.add(label);
 
     const ring = makeMesh(
-      new THREE.TorusGeometry(0.205, 0.038, 14, 42),
+      fingerRimGeometry,
       materials.dialMetal,
     );
-    ring.position.set(x, y, 0.105);
+    ring.position.set(x, y, 0.058);
     pivot.add(ring);
 
     const target = new THREE.Mesh(
@@ -646,13 +734,28 @@ function createDial(materials: PhoneMaterials): {
     hitTargets.push(target);
   });
 
+  const capWell = makeMesh(
+    new THREE.CircleGeometry(0.475, 64),
+    materials.darkCavity,
+    { cast: false },
+  );
+  capWell.position.z = -0.012;
+  pivot.add(capWell);
+
   const cap = makeMesh(
-    new THREE.CylinderGeometry(0.47, 0.47, 0.14, 64),
+    new THREE.CylinderGeometry(0.405, 0.425, 0.12, 64),
     materials.dialMetal,
   );
   cap.rotation.x = Math.PI / 2;
-  cap.position.z = 0.12;
+  cap.position.z = 0.065;
   pivot.add(cap);
+
+  const capRim = makeMesh(
+    new THREE.TorusGeometry(0.41, 0.025, 12, 64),
+    materials.dialMetal,
+  );
+  capRim.position.z = 0.132;
+  pivot.add(capRim);
 
   const hub = makeMesh(
     new THREE.CylinderGeometry(0.105, 0.13, 0.12, 32),
@@ -664,7 +767,7 @@ function createDial(materials: PhoneMaterials): {
 
   const stop = makeMesh(
     new RoundedBoxGeometry(0.18, 0.62, 0.17, 4, 0.06),
-    materials.nickel,
+    materials.agedNickel,
   );
   stop.position.set(fingerStopPosition.x, fingerStopPosition.y, 0.19);
   stop.rotation.z = fingerStopRotation;

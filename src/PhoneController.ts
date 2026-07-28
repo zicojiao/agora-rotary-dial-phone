@@ -10,9 +10,11 @@ const RECEIVER_BODY_EXCLUSION_X = 2.8;
 const RECEIVER_BODY_EXCLUSION_Y = 2.82;
 
 export type PhoneState = 'on-hook' | 'off-hook' | 'dialing';
+export type ReceiverState = 'on-hook' | 'off-hook';
 
 export type PhoneSnapshot = {
   state: PhoneState;
+  receiverState: ReceiverState;
   digits: string;
   dialProgress: number;
   dialDigit: number | null;
@@ -30,6 +32,7 @@ type DialMotion = {
   reachedStop: boolean;
   lastPulse: number;
   lastWindNotch: number;
+  returnState: ReceiverState;
 };
 
 export class PhoneController {
@@ -64,8 +67,11 @@ export class PhoneController {
   snapshot(): PhoneSnapshot {
     const maximum = this.dialMotion?.maximum ?? 1;
     const angle = this.dialMotion?.angle ?? 0;
+    const receiverState = this.dialMotion?.returnState
+      ?? (this.state === 'on-hook' ? 'on-hook' : 'off-hook');
     return {
       state: this.state,
+      receiverState,
       digits: this.digits,
       dialProgress: THREE.MathUtils.clamp(Math.abs(angle / maximum), 0, 1),
       dialDigit: this.dialMotion?.digit ?? null,
@@ -112,6 +118,7 @@ export class PhoneController {
   }
 
   toggleReceiver() {
+    if (this.dialMotion) return;
     return this.state === 'on-hook' ? this.pickUp() : this.hangUp();
   }
 
@@ -165,8 +172,12 @@ export class PhoneController {
   }
 
   quickDial(digit: number) {
-    if (this.state === 'on-hook' || this.dialMotion) return false;
+    if (this.dialMotion) return false;
+    const returnState: ReceiverState = this.state === 'on-hook'
+      ? 'on-hook'
+      : 'off-hook';
     this.audio.stopDialTone();
+    void this.audio.playDialPress(digit);
     const pulses = digit === 0 ? 10 : digit;
     this.dialMotion = {
       digit,
@@ -178,6 +189,7 @@ export class PhoneController {
       reachedStop: true,
       lastPulse: 0,
       lastWindNotch: 0,
+      returnState,
     };
     this.state = 'dialing';
     this.emit();
@@ -185,8 +197,12 @@ export class PhoneController {
   }
 
   beginDialDrag(digit: number) {
-    if (this.state === 'on-hook' || this.dialMotion) return false;
+    if (this.dialMotion) return false;
+    const returnState: ReceiverState = this.state === 'on-hook'
+      ? 'on-hook'
+      : 'off-hook';
     this.audio.stopDialTone();
+    void this.audio.playDialPress(digit);
     const pulses = digit === 0 ? 10 : digit;
     this.dialMotion = {
       digit,
@@ -198,6 +214,7 @@ export class PhoneController {
       reachedStop: false,
       lastPulse: 0,
       lastWindNotch: 0,
+      returnState,
     };
     this.state = 'dialing';
     this.emit();
@@ -224,10 +241,11 @@ export class PhoneController {
   releaseDial() {
     if (!this.dialMotion || this.dialMotion.phase !== 'held') return;
     if (this.dialMotion.angle < THREE.MathUtils.degToRad(9)) {
+      const { returnState } = this.dialMotion;
       this.dialMotion = null;
-      this.state = 'off-hook';
+      this.state = returnState;
       this.model.dialPivot.rotation.z = 0;
-      void this.audio.startDialTone();
+      if (returnState === 'off-hook') void this.audio.startDialTone();
       this.emit();
       return;
     }
@@ -241,14 +259,15 @@ export class PhoneController {
   private completeDial() {
     const motion = this.dialMotion;
     if (!motion) return;
-    if (motion.reachedStop) {
+    if (motion.reachedStop && motion.returnState === 'off-hook') {
       this.digits = `${this.digits}${motion.digit}`.slice(-16);
-    } else if (!this.digits) {
+      this.audio.confirmDialDigit();
+    } else if (motion.returnState === 'off-hook' && !this.digits) {
       void this.audio.startDialTone();
     }
     this.model.dialPivot.rotation.z = 0;
     this.dialMotion = null;
-    this.state = 'off-hook';
+    this.state = motion.returnState;
     this.emit();
   }
 

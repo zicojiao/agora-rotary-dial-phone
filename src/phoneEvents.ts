@@ -6,6 +6,7 @@ export const CALL_STATE_EVENT = 'rotary-phone:call-state';
 
 export type PhoneSnapshotEventDetail = {
   state: 'on-hook' | 'off-hook' | 'dialing';
+  receiverState: 'on-hook' | 'off-hook';
   digits: string;
 };
 

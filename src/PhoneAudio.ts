@@ -64,6 +64,7 @@ export class PhoneAudio {
   } | null = null;
   private dialToneElement: HTMLAudioElement | null = null;
   private dialToneElementPlaying = false;
+  private mechanicalNoiseBuffer: AudioBuffer | null = null;
   private _enabled = true;
 
   constructor() {
@@ -156,6 +157,37 @@ export class PhoneAudio {
   private bus(kind: 'line' | 'mechanical') {
     if (!this.output) throw new Error('Audio output is not initialized.');
     return this.output[kind];
+  }
+
+  private vibrate(duration: number) {
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+      return;
+    }
+    navigator.vibrate(duration);
+  }
+
+  private getMechanicalNoiseBuffer(context: AudioContext) {
+    if (
+      this.mechanicalNoiseBuffer
+      && this.mechanicalNoiseBuffer.sampleRate === context.sampleRate
+    ) {
+      return this.mechanicalNoiseBuffer;
+    }
+
+    const duration = 0.07;
+    const buffer = context.createBuffer(
+      1,
+      Math.ceil(context.sampleRate * duration),
+      context.sampleRate,
+    );
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < channel.length; index += 1) {
+      const progress = index / channel.length;
+      const envelope = (1 - progress) ** 2;
+      channel[index] = (Math.random() * 2 - 1) * envelope;
+    }
+    this.mechanicalNoiseBuffer = buffer;
+    return buffer;
   }
 
   async startDialTone() {
@@ -322,25 +354,50 @@ export class PhoneAudio {
     strength: number,
     frequency: number,
     duration: number,
+    delay = 0,
   ) {
     if (!this._enabled) return;
     const context = await this.activate();
-    const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
-    const channel = buffer.getChannelData(0);
-    for (let index = 0; index < channel.length; index += 1) {
-      const envelope = 1 - index / channel.length;
-      channel[index] = (Math.random() * 2 - 1) * envelope * envelope;
-    }
     const source = context.createBufferSource();
     const filter = context.createBiquadFilter();
     const gain = context.createGain();
+    const now = context.currentTime + delay;
     filter.type = 'bandpass';
     filter.frequency.value = frequency;
     filter.Q.value = 1.35;
-    gain.gain.value = strength;
-    source.buffer = buffer;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(strength, now + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    source.buffer = this.getMechanicalNoiseBuffer(context);
     source.connect(filter).connect(gain).connect(this.bus('mechanical'));
-    source.start();
+    source.start(now);
+    source.stop(now + duration + 0.005);
+  }
+
+  private async playBodyResonance(
+    strength: number,
+    frequency: number,
+    duration: number,
+    delay = 0,
+  ) {
+    if (!this._enabled) return;
+    const context = await this.activate();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime + delay;
+
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(
+      Math.max(38, frequency * 0.76),
+      now + duration,
+    );
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(strength, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    oscillator.connect(gain).connect(this.bus('mechanical'));
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.01);
   }
 
   private async playMetallicRatchet(notch: number) {
@@ -364,12 +421,27 @@ export class PhoneAudio {
     oscillator.stop(now + 0.028);
   }
 
+  async playDialPress(digit: number) {
+    const variation = digit % 4;
+    await Promise.all([
+      this.playNoiseClick(0.118, 1_650 + variation * 95, 0.052),
+      this.playBodyResonance(0.042, 94 + variation * 6, 0.068),
+    ]);
+    this.vibrate(4);
+  }
+
   async playDialWindTick(notch: number) {
     const alternate = notch % 2 === 0 ? 1 : 0.86;
     await Promise.all([
-      this.playNoiseClick(0.105 * alternate, 2850 + (notch % 3) * 160, 0.018),
+      this.playNoiseClick(0.112 * alternate, 1_900 + (notch % 3) * 145, 0.038),
       this.playMetallicRatchet(notch),
+      this.playBodyResonance(
+        0.03 * alternate,
+        96 + (notch % 4) * 6,
+        0.06,
+      ),
     ]);
+    this.vibrate(2);
   }
 
   playDialTick(strength = 1) {
@@ -411,7 +483,17 @@ export class PhoneAudio {
     oscillator.start(now);
     oscillator.stop(now + 0.055);
 
-    await this.playNoiseClick(0.13, 1350, 0.038);
+    this.vibrate(10);
+    await Promise.all([
+      this.playNoiseClick(0.15, 1_350, 0.052),
+      this.playBodyResonance(0.12, 62, 0.14),
+      this.playNoiseClick(0.105, 1_580, 0.042, 0.034),
+      this.playBodyResonance(0.048, 82, 0.078, 0.034),
+    ]);
+  }
+
+  confirmDialDigit() {
+    this.vibrate(4);
   }
 
   dispose() {
@@ -427,5 +509,6 @@ export class PhoneAudio {
     this.context = null;
     this.output = null;
     this.resumePromise = null;
+    this.mechanicalNoiseBuffer = null;
   }
 }

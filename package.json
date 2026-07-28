@@ -14,8 +14,9 @@
     "test:call-exit": "node --import tsx spec/test-call-exit-policy.ts",
     "test:call-readiness": "node --import tsx spec/test-call-readiness.ts",
     "test:microphone": "node --import tsx spec/test-microphone-permission.ts",
+    "test:controller-audio": "node --import tsx spec/test-phone-controller-audio.ts",
     "test:api": "node --import tsx spec/test-api-contracts.ts",
-    "test": "pnpm test:physics && pnpm test:call && pnpm test:call-exit && pnpm test:call-readiness && pnpm test:microphone && pnpm test:api",
+    "test": "pnpm test:physics && pnpm test:call && pnpm test:call-exit && pnpm test:call-readiness && pnpm test:microphone && pnpm test:controller-audio && pnpm test:api",
     "typecheck": "tsc --noEmit",
     "build": "next build",
     "lint": "eslint ."

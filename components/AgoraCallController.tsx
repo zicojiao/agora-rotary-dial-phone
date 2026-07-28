@@ -329,7 +329,7 @@ export default function AgoraCallController() {
 
       clearWrongNumberTimer();
 
-      if (detail.state === 'on-hook') {
+      if (detail.receiverState === 'on-hook') {
         if (phaseRef.current !== 'idle' || sessionRef.current) {
           void finishCall(false);
         }
