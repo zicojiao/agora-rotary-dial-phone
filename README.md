@@ -3,9 +3,11 @@
 An interactive rotary telephone built with Three.js and powered by Agora
 Conversational AI.
 
-[![License: MIT](https://img.shields.io/github/license/zicojiao/agora-rotary-dial-phone)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Three.js](https://img.shields.io/badge/Three.js-r185-000000?logo=threedotjs&logoColor=white)](https://threejs.org/)
 [![Agora](https://img.shields.io/badge/Agora-Conversational_AI-099DFD)](https://www.agora.io/en/products/conversational-ai-engine/)
+
+**English** · [简体中文](./README.zh-CN.md)
 
 **[Try the live demo →](https://rotary-dial-phone.vercel.app)**
 
