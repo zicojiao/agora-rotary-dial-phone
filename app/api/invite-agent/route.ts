@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   AgoraClient,
@@ -8,6 +9,7 @@ import {
   OpenAI,
 } from 'agora-agents';
 import { DEFAULT_AGENT_UID } from '@/lib/agora';
+import { isCallTicketFor, issueStopToken } from '@/lib/callTicket';
 import { createFishAudioTts } from '@/lib/fishAudio';
 import type { AgentResponse, ClientStartRequest } from '@/types/conversation';
 
@@ -88,7 +90,8 @@ function isValidStartRequest(value: unknown): value is ClientStartRequest {
     typeof body.requester_id === 'string' &&
     /^[1-9][0-9]{0,9}$/.test(body.requester_id) &&
     typeof body.channel_name === 'string' &&
-    /^[A-Za-z0-9_-]{1,64}$/.test(body.channel_name)
+    /^[A-Za-z0-9_-]{1,64}$/.test(body.channel_name) &&
+    typeof body.ticket === 'string'
   );
 }
 
@@ -97,8 +100,17 @@ export async function POST(request: NextRequest) {
     const body: unknown = await request.json();
     if (!isValidStartRequest(body)) {
       return NextResponse.json(
-        { error: 'A valid requester_id and channel_name are required.' },
+        { error: 'A valid requester_id, channel_name, and ticket are required.' },
         { status: 400 },
+      );
+    }
+
+    // The ticket proves this caller opened the channel it is asking us to
+    // dial into, so an agent can never be started in someone else's channel.
+    if (!isCallTicketFor(body.ticket, body.channel_name, body.requester_id)) {
+      return NextResponse.json(
+        { error: 'The call ticket is invalid or expired.' },
+        { status: 403 },
       );
     }
 
@@ -113,10 +125,6 @@ export async function POST(request: NextRequest) {
 
     const agent = new Agent({
       client,
-      instructions: AGENT_PROMPT,
-      greeting,
-      failureMessage: 'Please give me a moment.',
-      maxHistory: 30,
       turnDetection: {
         config: {
           speech_threshold: 0.5,
@@ -140,7 +148,6 @@ export async function POST(request: NextRequest) {
         audio_scenario: 'chorus',
         data_channel: 'rtm',
         enable_error_message: true,
-        enable_metrics: true,
       },
     })
       .withStt(
@@ -152,6 +159,7 @@ export async function POST(request: NextRequest) {
       .withLlm(
         new OpenAI({
           model: 'gpt-4o-mini',
+          systemMessages: [{ role: 'system', content: AGENT_PROMPT }],
           greetingMessage: greeting,
           failureMessage: 'Please give me a moment.',
           maxHistory: 15,
@@ -165,6 +173,9 @@ export async function POST(request: NextRequest) {
       .withTts(createFishAudioTts());
 
     const session = agent.createSession({
+      // Agent names must be unique per project; the SDK default is a bare
+      // millisecond timestamp, which collides on simultaneous calls.
+      name: `rotary-${Date.now()}-${randomUUID().slice(0, 8)}`,
       channel: body.channel_name,
       agentUid,
       remoteUids: [body.requester_id],
@@ -213,6 +224,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       agent_id: agentId,
+      stop_token: issueStopToken(agentId),
       create_ts: Math.floor(Date.now() / 1000),
       state: 'RUNNING',
     } satisfies AgentResponse);

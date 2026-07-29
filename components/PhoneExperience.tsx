@@ -12,7 +12,7 @@ export default function PhoneExperience() {
     <main id="app">
       <canvas
         id="scene"
-        aria-label="Agora interactive 1930s American Art Deco rotary telephone"
+        aria-label="Agora interactive American Art Deco rotary telephone"
       />
 
       <header className="masthead">

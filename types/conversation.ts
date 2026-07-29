@@ -1,30 +1,35 @@
 import type { RTMClient } from 'agora-rtm';
 
-export interface AgoraTokenData {
+export interface AgoraTokenIssue {
   token: string;
   uid: string;
   channel: string;
+  /** Signed proof that this caller opened the channel. */
+  ticket: string;
+}
+
+export interface AgoraTokenData extends AgoraTokenIssue {
   agentId: string;
+  /** Signed proof that this caller started the agent. */
+  stopToken: string;
 }
 
 export interface ClientStartRequest {
   requester_id: string;
   channel_name: string;
+  ticket: string;
 }
 
 export interface StopConversationRequest {
   agent_id: string;
+  stop_token: string;
 }
 
 export interface AgentResponse {
   agent_id: string;
+  stop_token: string;
   create_ts: number;
   state: string;
-}
-
-export interface AgoraRenewalTokens {
-  rtcToken: string;
-  rtmToken: string;
 }
 
 export type MicrophoneRuntimeState =
@@ -34,10 +39,11 @@ export type MicrophoneRuntimeState =
 
 export interface AgoraRuntimeProps {
   agoraData: AgoraTokenData;
-  rtmClient: RTMClient;
+  rtmClient: RTMClient | null;
   onConnected: () => void;
   onAgentLeft: () => void;
   onMicrophoneState: (state: MicrophoneRuntimeState) => void;
   onRuntimeError: (message: string) => void;
-  onTokenWillExpire: (uid: string) => Promise<AgoraRenewalTokens>;
+  /** Resolves to a fresh combined RTC + RTM token for the active session. */
+  onTokenWillExpire: () => Promise<string>;
 }

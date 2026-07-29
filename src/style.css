@@ -379,9 +379,9 @@ body[data-call-state="invalid-number"] .status-dot {
 
 .agora-signature-secondary {
   color: var(--copper);
-  font-size: clamp(7px, 0.55vw, 8px);
+  font-size: clamp(8.5px, 0.68vw, 10.5px);
   font-weight: 500;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.18em;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -549,7 +549,7 @@ body[data-call-state="invalid-number"] .status-dot {
   }
 
   .agora-signature-secondary {
-    font-size: clamp(8px, 0.65vw, 9px);
+    font-size: clamp(10px, 0.78vw, 12px);
   }
 }
 
@@ -744,7 +744,7 @@ body[data-call-state="invalid-number"] .status-dot {
   }
 
   .agora-signature-secondary {
-    font-size: 6.5px;
+    font-size: 8px;
   }
 }
 

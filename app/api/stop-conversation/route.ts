@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { AgoraClient, Area } from 'agora-agents';
+import { isStopTokenFor } from '@/lib/callTicket';
 import type { StopConversationRequest } from '@/types/conversation';
 
 function isAlreadyStopped(error: unknown) {
@@ -25,8 +26,12 @@ function isAlreadyStopped(error: unknown) {
 
 function isValidStopRequest(value: unknown): value is StopConversationRequest {
   if (!value || typeof value !== 'object') return false;
-  const agentId = (value as Partial<StopConversationRequest>).agent_id;
-  return typeof agentId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(agentId);
+  const body = value as Partial<StopConversationRequest>;
+  return (
+    typeof body.agent_id === 'string' &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(body.agent_id) &&
+    typeof body.stop_token === 'string'
+  );
 }
 
 export async function POST(request: Request) {
@@ -34,8 +39,17 @@ export async function POST(request: Request) {
     const body: unknown = await request.json();
     if (!isValidStopRequest(body)) {
       return NextResponse.json(
-        { error: 'A valid agent_id is required.' },
+        { error: 'A valid agent_id and stop_token are required.' },
         { status: 400 },
+      );
+    }
+
+    // Only whoever started this agent holds its signature, so one caller can
+    // never hang up another caller's line.
+    if (!isStopTokenFor(body.agent_id, body.stop_token)) {
+      return NextResponse.json(
+        { error: 'The stop token does not match this agent.' },
+        { status: 403 },
       );
     }
 

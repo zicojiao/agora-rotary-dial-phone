@@ -10,9 +10,6 @@ export default defineConfig([
     'dist/**',
     'node_modules/**',
     'next-env.d.ts',
-    'review/**',
-    'spec/detail-crops/**',
-    'spec/material-crops/**',
-    'src/generatedPhoneFactory.ts',
+    'coverage/**',
   ]),
 ]);

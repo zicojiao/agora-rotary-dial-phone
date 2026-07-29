@@ -1,8 +1,19 @@
 {
   "name": "rotary-dial-phone",
   "version": "1.0.0",
+  "description": "An interactive Three.js rotary telephone connected to Agora Conversational AI.",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zicojiao/agora-rotary-dial-phone.git"
+  },
+  "homepage": "https://github.com/zicojiao/agora-rotary-dial-phone#readme",
+  "bugs": {
+    "url": "https://github.com/zicojiao/agora-rotary-dial-phone/issues"
+  },
   "type": "module",
+  "packageManager": "pnpm@11.6.0",
   "engines": {
     "node": ">=22"
   },
@@ -12,11 +23,12 @@
     "test:physics": "node spec/test-dial-physics.mjs",
     "test:call": "node --import tsx spec/test-call-policy.ts",
     "test:call-exit": "node --import tsx spec/test-call-exit-policy.ts",
+    "test:call-ticket": "node --import tsx spec/test-call-ticket.ts",
     "test:call-readiness": "node --import tsx spec/test-call-readiness.ts",
     "test:microphone": "node --import tsx spec/test-microphone-permission.ts",
     "test:controller-audio": "node --import tsx spec/test-phone-controller-audio.ts",
     "test:api": "node --import tsx spec/test-api-contracts.ts",
-    "test": "pnpm test:physics && pnpm test:call && pnpm test:call-exit && pnpm test:call-readiness && pnpm test:microphone && pnpm test:controller-audio && pnpm test:api",
+    "test": "pnpm test:physics && pnpm test:call && pnpm test:call-exit && pnpm test:call-ticket && pnpm test:call-readiness && pnpm test:microphone && pnpm test:controller-audio && pnpm test:api",
     "typecheck": "tsc --noEmit",
     "build": "next build",
     "lint": "eslint ."
@@ -28,7 +40,7 @@
     "agora-rtc-sdk-ng": "4.24.3",
     "agora-rtm": "2.2.3",
     "agora-token": "2.0.5",
-    "next": "16.2.6",
+    "next": "16.2.12",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "three": "^0.185.0"
@@ -39,7 +51,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.0",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.2",
+    "eslint-config-next": "16.2.12",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

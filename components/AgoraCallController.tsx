@@ -24,17 +24,21 @@ import {
   type PhoneSnapshotEventDetail,
 } from '@/src/phoneEvents';
 import { ensureMicrophonePermission } from '@/src/microphonePermission';
+import { settleOptionalOperation } from '@/src/optionalOperation';
 import type {
   AgentResponse,
-  AgoraRenewalTokens,
   AgoraTokenData,
+  AgoraTokenIssue,
   ClientStartRequest,
   MicrophoneRuntimeState,
+  StopConversationRequest,
 } from '@/types/conversation';
 
 const AgoraCallRuntime = dynamic(() => import('./AgoraCallRuntime'), {
   ssr: false,
 });
+
+const RTM_CONNECT_TIMEOUT_MS = 5_000;
 
 const AgoraProvider = dynamic(
   async () => {
@@ -68,7 +72,13 @@ const AgoraProvider = dynamic(
 
 type ActiveSession = {
   agoraData: AgoraTokenData;
-  rtmClient: RTMClient;
+  rtmClient: RTMClient | null;
+};
+
+/** An agent that started before the session was assembled, or torn down. */
+type PendingAgent = {
+  agentId: string;
+  stopToken: string;
 };
 
 type ConnectionStep = 'permission' | 'agent' | 'microphone';
@@ -90,12 +100,15 @@ export default function AgoraCallController() {
   const [connectionStep, setConnectionStep] =
     useState<ConnectionStep>('permission');
   const phaseRef = useRef<CallPhase>('idle');
+  // Mirrors `remaining` so the callbacks handed to the runtime stay referentially
+  // stable — a countdown tick must not tear down and re-init the Agora runtime.
+  const remainingRef = useRef(CALL_LIMIT_SECONDS);
   const sessionRef = useRef<ActiveSession | null>(null);
   const lifecycleRef = useRef(0);
   const deadlineRef = useRef(0);
   const stopPromiseRef = useRef<Promise<void> | null>(null);
   const wrongNumberTimerRef = useRef<number | null>(null);
-  const pendingAgentIdRef = useRef<string | null>(null);
+  const pendingAgentRef = useRef<PendingAgent | null>(null);
 
   const clearWrongNumberTimer = useCallback(() => {
     if (wrongNumberTimerRef.current === null) return;
@@ -104,8 +117,13 @@ export default function AgoraCallController() {
   }, []);
 
   const publishState = useCallback(
-    (nextPhase: CallPhase, nextRemaining = remaining, error?: string) => {
+    (
+      nextPhase: CallPhase,
+      nextRemaining = remainingRef.current,
+      error?: string,
+    ) => {
       phaseRef.current = nextPhase;
+      remainingRef.current = nextRemaining;
       setPhase(nextPhase);
       setRemaining(nextRemaining);
       setErrorMessage(error ?? '');
@@ -115,15 +133,18 @@ export default function AgoraCallController() {
         error,
       });
     },
-    [remaining],
+    [],
   );
 
-  const stopAgent = useCallback(async (agentId: string) => {
+  const stopAgent = useCallback(async (agent: PendingAgent) => {
     try {
       const response = await fetch('/api/stop-conversation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: agentId }),
+        body: JSON.stringify({
+          agent_id: agent.agentId,
+          stop_token: agent.stopToken,
+        } satisfies StopConversationRequest),
         keepalive: true,
       });
       if (!response.ok) {
@@ -140,9 +161,10 @@ export default function AgoraCallController() {
   const cleanupSession = useCallback(
     async (activeSession: ActiveSession | null) => {
       if (!activeSession) return;
+      const { agentId, stopToken } = activeSession.agoraData;
       await Promise.allSettled([
-        stopAgent(activeSession.agoraData.agentId),
-        activeSession.rtmClient.logout(),
+        stopAgent({ agentId, stopToken }),
+        activeSession.rtmClient?.logout() ?? Promise.resolve(),
       ]);
     },
     [stopAgent],
@@ -154,7 +176,7 @@ export default function AgoraCallController() {
       if (
         phaseRef.current === 'idle' &&
         !sessionRef.current &&
-        !pendingAgentIdRef.current
+        !pendingAgentRef.current
       ) {
         if (returnReceiver) {
           window.dispatchEvent(new Event(PHONE_FORCE_HANGUP_EVENT));
@@ -163,18 +185,16 @@ export default function AgoraCallController() {
       }
 
       lifecycleRef.current += 1;
-      publishState('ending', remaining);
+      publishState('ending', remainingRef.current);
       const activeSession = sessionRef.current;
-      const pendingAgentId = pendingAgentIdRef.current;
+      const pendingAgent = pendingAgentRef.current;
       sessionRef.current = null;
-      pendingAgentIdRef.current = null;
+      pendingAgentRef.current = null;
       setSession(null);
 
       const operation = Promise.allSettled([
         cleanupSession(activeSession),
-        pendingAgentId
-          ? stopAgent(pendingAgentId)
-          : Promise.resolve(),
+        pendingAgent ? stopAgent(pendingAgent) : Promise.resolve(),
       ]).then(() => undefined).finally(() => {
         deadlineRef.current = 0;
         publishState('idle', CALL_LIMIT_SECONDS);
@@ -186,7 +206,7 @@ export default function AgoraCallController() {
       stopPromiseRef.current = operation;
       return operation;
     },
-    [cleanupSession, publishState, remaining, stopAgent],
+    [cleanupSession, publishState, stopAgent],
   );
 
   const startCall = useCallback(
@@ -216,10 +236,7 @@ export default function AgoraCallController() {
             await parseError(tokenResponse, 'Could not open the Agora line.'),
           );
         }
-        const tokenData = (await tokenResponse.json()) as Omit<
-          AgoraTokenData,
-          'agentId'
-        >;
+        const tokenData = (await tokenResponse.json()) as AgoraTokenIssue;
 
         const agentPromise = fetch('/api/invite-agent', {
           method: 'POST',
@@ -227,6 +244,7 @@ export default function AgoraCallController() {
           body: JSON.stringify({
             requester_id: tokenData.uid,
             channel_name: tokenData.channel,
+            ticket: tokenData.ticket,
           } satisfies ClientStartRequest),
         }).then(async (response) => {
           if (!response.ok) {
@@ -235,8 +253,12 @@ export default function AgoraCallController() {
             );
           }
           const result = (await response.json()) as AgentResponse;
-          pendingAgentIdRef.current = result.agent_id;
-          return result;
+          const agent: PendingAgent = {
+            agentId: result.agent_id,
+            stopToken: result.stop_token,
+          };
+          pendingAgentRef.current = agent;
+          return agent;
         });
 
         const rtmPromise = (async () => {
@@ -245,69 +267,79 @@ export default function AgoraCallController() {
             process.env.NEXT_PUBLIC_AGORA_APP_ID!,
             tokenData.uid,
           );
-          await rtmClient.login({ token: tokenData.token });
-          await rtmClient.subscribe(tokenData.channel);
-          return rtmClient;
+          try {
+            await rtmClient.login({ token: tokenData.token });
+            await rtmClient.subscribe(tokenData.channel);
+            return rtmClient;
+          } catch (error) {
+            await rtmClient.logout().catch(() => undefined);
+            throw error;
+          }
         })();
+        const optionalRtmPromise = settleOptionalOperation(
+          rtmPromise,
+          RTM_CONNECT_TIMEOUT_MS,
+          (lateClient) => lateClient.logout(),
+        );
 
         const [agentResult, rtmResult] = await Promise.allSettled([
           agentPromise,
-          rtmPromise,
+          optionalRtmPromise,
         ]);
+        const rtmSetup =
+          rtmResult.status === 'fulfilled'
+            ? rtmResult.value
+            : { status: 'rejected' as const, error: rtmResult.reason };
+        const connectedRtmClient =
+          rtmSetup.status === 'available' ? rtmSetup.value : null;
+        if (rtmSetup.status !== 'available') {
+          console.warn(
+            rtmSetup.status === 'timeout'
+              ? 'Agora RTM connection timed out; continuing with RTC audio only.'
+              : 'Agora RTM connection failed; continuing with RTC audio only.',
+            rtmSetup.status === 'rejected' ? rtmSetup.error : undefined,
+          );
+        }
+
+        // Whatever half of the handshake succeeded has to be torn down again
+        // when the caller hangs up mid-connect or the other half fails.
+        const abandonPartialSetup = async () => {
+          const startedAgent =
+            agentResult.status === 'fulfilled' ? agentResult.value : null;
+          if (
+            startedAgent &&
+            pendingAgentRef.current?.agentId === startedAgent.agentId
+          ) {
+            pendingAgentRef.current = null;
+          }
+          await Promise.allSettled([
+            startedAgent ? stopAgent(startedAgent) : Promise.resolve(),
+            connectedRtmClient?.logout() ?? Promise.resolve(),
+          ]);
+        };
 
         if (
           lifecycle !== lifecycleRef.current ||
           phaseRef.current !== 'connecting'
         ) {
-          if (
-            agentResult.status === 'fulfilled' &&
-            pendingAgentIdRef.current === agentResult.value.agent_id
-          ) {
-            pendingAgentIdRef.current = null;
-          }
-          await Promise.allSettled([
-            agentResult.status === 'fulfilled'
-              ? stopAgent(agentResult.value.agent_id)
-              : Promise.resolve(),
-            rtmResult.status === 'fulfilled'
-              ? rtmResult.value.logout()
-              : Promise.resolve(),
-          ]);
+          await abandonPartialSetup();
           return;
         }
 
-        if (agentResult.status === 'rejected' || rtmResult.status === 'rejected') {
-          if (
-            agentResult.status === 'fulfilled' &&
-            pendingAgentIdRef.current === agentResult.value.agent_id
-          ) {
-            pendingAgentIdRef.current = null;
-          }
-          await Promise.allSettled([
-            agentResult.status === 'fulfilled'
-              ? stopAgent(agentResult.value.agent_id)
-              : Promise.resolve(),
-            rtmResult.status === 'fulfilled'
-              ? rtmResult.value.logout()
-              : Promise.resolve(),
-          ]);
-          const failure =
-            agentResult.status === 'rejected'
-              ? agentResult.reason
-              : rtmResult.status === 'rejected'
-                ? rtmResult.reason
-                : null;
-          throw failure;
+        if (agentResult.status === 'rejected') {
+          await abandonPartialSetup();
+          throw agentResult.reason;
         }
 
         const activeSession: ActiveSession = {
           agoraData: {
             ...tokenData,
-            agentId: agentResult.value.agent_id,
+            agentId: agentResult.value.agentId,
+            stopToken: agentResult.value.stopToken,
           },
-          rtmClient: rtmResult.value,
+          rtmClient: connectedRtmClient,
         };
-        pendingAgentIdRef.current = null;
+        pendingAgentRef.current = null;
         sessionRef.current = activeSession;
         setSession(activeSession);
       } catch (error) {
@@ -395,32 +427,32 @@ export default function AgoraCallController() {
   const handleRuntimeError = useCallback(
     (message: string) => {
       if (phaseRef.current === 'ending' || phaseRef.current === 'idle') return;
-      publishState('error', remaining, message);
+      publishState('error', remainingRef.current, message);
       void finishCall(true);
     },
-    [finishCall, publishState, remaining],
+    [finishCall, publishState],
   );
 
-  const renewTokens = useCallback(
-    async (rtcUid: string): Promise<AgoraRenewalTokens> => {
-      const activeSession = sessionRef.current;
-      if (!activeSession) throw new Error('The call session is no longer active.');
-      const { channel, uid: rtmUid } = activeSession.agoraData;
-      const [rtcResponse, rtmResponse] = await Promise.all([
-        fetch(`/api/generate-agora-token?channel=${channel}&uid=${rtcUid}`),
-        fetch(`/api/generate-agora-token?channel=${channel}&uid=${rtmUid}`),
-      ]);
-      if (!rtcResponse.ok || !rtmResponse.ok) {
-        throw new Error('Agora token renewal failed.');
-      }
-      const [rtcData, rtmData] = await Promise.all([
-        rtcResponse.json() as Promise<{ token: string }>,
-        rtmResponse.json() as Promise<{ token: string }>,
-      ]);
-      return { rtcToken: rtcData.token, rtmToken: rtmData.token };
-    },
-    [],
-  );
+  const handleAgentLeft = useCallback(() => {
+    handleRuntimeError('The Agora AI agent left the line.');
+  }, [handleRuntimeError]);
+
+  const renewToken = useCallback(async (): Promise<string> => {
+    const activeSession = sessionRef.current;
+    if (!activeSession) throw new Error('The call session is no longer active.');
+    // The ticket carries the channel and uid, so renewal cannot be pointed at
+    // another line. One combined token serves both RTC and RTM, as at join.
+    const response = await fetch(
+      `/api/generate-agora-token?ticket=${encodeURIComponent(
+        activeSession.agoraData.ticket,
+      )}`,
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response, 'Agora token renewal failed.'));
+    }
+    const renewed = (await response.json()) as AgoraTokenIssue;
+    return renewed.token;
+  }, []);
 
   useEffect(() => {
     if (phase !== 'connected') return;
@@ -429,6 +461,7 @@ export default function AgoraCallController() {
         deadlineRef.current,
         Date.now(),
       );
+      remainingRef.current = nextRemaining;
       setRemaining(nextRemaining);
       dispatchCallState({
         phase: 'connected',
@@ -460,11 +493,14 @@ export default function AgoraCallController() {
     const handlePageHide = () => {
       lifecycleRef.current += 1;
       const activeSession = sessionRef.current;
-      const agentId =
-        activeSession?.agoraData.agentId ??
-        pendingAgentIdRef.current;
-      if (!agentId) return;
-      requestAgentStopOnPageExit(agentId, {
+      const agent: PendingAgent | null = activeSession
+        ? {
+            agentId: activeSession.agoraData.agentId,
+            stopToken: activeSession.agoraData.stopToken,
+          }
+        : pendingAgentRef.current;
+      if (!agent) return;
+      requestAgentStopOnPageExit(agent.agentId, agent.stopToken, {
         sendBeacon: navigator.sendBeacon.bind(navigator),
         fetch: window.fetch.bind(window),
       });
@@ -486,10 +522,10 @@ export default function AgoraCallController() {
             agoraData={session.agoraData}
             rtmClient={session.rtmClient}
             onConnected={handleConnected}
-            onAgentLeft={() => handleRuntimeError('The Agora AI agent left the line.')}
+            onAgentLeft={handleAgentLeft}
             onMicrophoneState={handleMicrophoneState}
             onRuntimeError={handleRuntimeError}
-            onTokenWillExpire={renewTokens}
+            onTokenWillExpire={renewToken}
           />
         </AgoraProvider>
       ) : null}
@@ -522,6 +558,9 @@ export default function AgoraCallController() {
             <>
               <time>{formatCallTime(remaining)}</time>
               <small>5 minute maximum</small>
+              {session && !session.rtmClient ? (
+                <small>Voice connected without live AI status.</small>
+              ) : null}
             </>
           ) : null}
           {phase === 'connecting' && connectionStep === 'permission' ? (

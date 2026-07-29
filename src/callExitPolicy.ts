@@ -19,9 +19,10 @@ export function shouldConfirmCallExit(
 
 export function requestAgentStopOnPageExit(
   agentId: string,
+  stopToken: string,
   transport: PageExitTransport,
 ) {
-  const body = JSON.stringify({ agent_id: agentId });
+  const body = JSON.stringify({ agent_id: agentId, stop_token: stopToken });
   if (transport.sendBeacon('/api/stop-conversation', body)) {
     return 'beacon' as const;
   }

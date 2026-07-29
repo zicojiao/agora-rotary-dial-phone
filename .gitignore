@@ -8,3 +8,5 @@ dist/
 *.log
 *.tsbuildinfo
 .vercel
+.claude/
+coverage/

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import AgoraRTC, {
+import {
   RemoteUser,
   useClientEvent,
   useJoin,
@@ -18,10 +18,6 @@ import {
 import { DEFAULT_AGENT_UID } from '@/lib/agora';
 import { isCallReady } from '@/src/callReadiness';
 import type { AgoraRuntimeProps } from '@/types/conversation';
-
-type AgoraRtcWithParameters = typeof AgoraRTC & {
-  setParameter?: (key: string, value: unknown) => void;
-};
 
 export default function AgoraCallRuntime({
   agoraData,
@@ -114,17 +110,6 @@ export default function AgoraCallRuntime({
   }, [joinError, microphoneError, onRuntimeError, publishError]);
 
   useEffect(() => {
-    try {
-      (AgoraRTC as AgoraRtcWithParameters).setParameter?.(
-        'ENABLE_AUDIO_PTS',
-        true,
-      );
-    } catch (error) {
-      console.warn('Could not enable Agora audio timestamps:', error);
-    }
-  }, []);
-
-  useEffect(() => {
     if (!isReady || !rtcConnected) return;
     let cancelled = false;
 
@@ -132,7 +117,9 @@ export default function AgoraCallRuntime({
       try {
         const voiceAi = await AgoraVoiceAI.init({
           rtcEngine: client,
-          rtmConfig: { rtmEngine: rtmClient },
+          ...(rtmClient
+            ? { rtmConfig: { rtmEngine: rtmClient } }
+            : {}),
           renderMode: TranscriptHelperMode.TEXT,
           enableLog: false,
         });
@@ -147,15 +134,17 @@ export default function AgoraCallRuntime({
           onRuntimeError(error.message || 'The Agora agent reported an error.');
         });
         voiceAi.on(AgoraVoiceAIEvents.MESSAGE_ERROR, (_, error) => {
-          onRuntimeError(error.message || 'The Agora message channel failed.');
+          console.warn(
+            'Agora RTM message channel degraded; RTC audio remains active.',
+            error,
+          );
         });
         voiceAi.subscribeMessage(agoraData.channel);
       } catch (error) {
         if (!cancelled) {
-          onRuntimeError(
-            error instanceof Error
-              ? error.message
-              : 'Agora voice runtime initialization failed.',
+          console.warn(
+            'Agora voice status features are unavailable; RTC audio remains active.',
+            error,
           );
         }
       }
@@ -198,13 +187,12 @@ export default function AgoraCallRuntime({
   });
 
   const renewTokens = useCallback(async () => {
-    const joinedUid = client.uid;
-    if (!joinedUid) return;
+    if (!client.uid) return;
     try {
-      const tokens = await onTokenWillExpire(String(joinedUid));
+      const token = await onTokenWillExpire();
       await Promise.all([
-        client.renewToken(tokens.rtcToken),
-        rtmClient.renewToken(tokens.rtmToken),
+        client.renewToken(token),
+        rtmClient?.renewToken(token) ?? Promise.resolve(),
       ]);
     } catch (error) {
       onRuntimeError(
